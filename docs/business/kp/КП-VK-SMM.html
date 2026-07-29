@@ -101,7 +101,7 @@
     li { margin-bottom: 6px; }
 
     .section { margin-bottom: 36px; }
-    .section--break { page-break-before: always; }
+    .section--break { /* разрывы только в @media print */ }
 
     .grid-2 {
       display: grid;
@@ -132,12 +132,11 @@
     }
 
     .shot {
-      margin: 0 0 22px;
+      margin: 0 0 18px;
       background: var(--card);
       border: 1px solid var(--line);
       border-radius: 14px;
-      overflow: visible;
-      page-break-inside: auto;
+      overflow: hidden;
     }
     .shot img {
       display: block;
@@ -149,7 +148,7 @@
       background: #e8e4db;
     }
     .shot figcaption {
-      padding: 12px 16px 14px;
+      padding: 10px 14px 12px;
       font-size: 13px;
       color: var(--muted);
       border-top: 1px solid var(--line);
@@ -160,6 +159,17 @@
       font-size: 14px;
       margin-bottom: 2px;
     }
+
+    .shot-grid {
+      display: grid;
+      gap: 14px;
+      margin: 0 0 18px;
+    }
+    .shot-grid--2 { grid-template-columns: 1fr 1fr; }
+    .shot-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+    .shot-grid .shot { margin: 0; }
+    .shot-grid .shot figcaption { font-size: 12px; padding: 8px 10px 10px; }
+    .shot-grid .shot figcaption strong { font-size: 13px; }
 
     table {
       width: 100%;
@@ -271,22 +281,140 @@
       text-align: center;
     }
 
+    @page {
+      size: A4;
+      margin: 10mm;
+    }
+
     @media print {
-      body { background: #fff; }
-      .print-hint { display: none; }
+      body {
+        background: #fff !important;
+        font-size: 11.5px;
+        line-height: 1.4;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .print-hint { display: none !important; }
       .sheet {
         margin: 0;
         box-shadow: none;
         max-width: none;
+        width: 100%;
+        background: var(--paper);
       }
-      .hero { padding: 32px 28px; }
-      .content { padding: 24px 28px 32px; }
+      .hero {
+        padding: 16px 14px !important;
+        border-radius: 0;
+      }
+      .hero h1 { font-size: 1.35rem; max-width: none; margin-bottom: 8px; }
+      .hero__lead, .landing-lead { font-size: 0.95rem !important; margin-bottom: 10px !important; }
+      .content { padding: 12px 10px 14px !important; }
       a { color: inherit; text-decoration: none; }
+
+      .section { margin-bottom: 12px; }
+      /* Разрыв только перед скринами и финалом — иначе на страницах остаются дыры */
+      .section--break {
+        break-before: auto;
+        page-break-before: auto;
+      }
+      .section--shots {
+        break-before: page;
+        page-break-before: always;
+      }
+      .section--finale {
+        break-before: page;
+        page-break-before: always;
+      }
+      h2 { font-size: 1.15rem; margin-bottom: 6px; }
+      h3 { font-size: 0.98rem; }
+      p { margin-bottom: 6px; }
+      ul { margin-bottom: 8px; }
+
+      .grid-2, .grid-3 { gap: 8px; }
+      .grid-3 { grid-template-columns: 1fr 1fr; }
+      .card {
+        padding: 10px 12px;
+        border-radius: 10px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .steps li {
+        padding: 8px 10px 8px 44px;
+        margin-bottom: 6px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .steps li::before {
+        width: 24px;
+        height: 24px;
+        left: 10px;
+        top: 8px;
+        font-size: 12px;
+      }
+      table {
+        font-size: 11px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      th, td { padding: 6px 8px; }
+
+      /* Скрины плотно, без «дыр» на полстраницы */
+      .shot {
+        break-before: auto;
+        page-break-before: auto;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin: 0 0 10px;
+        border-radius: 10px;
+      }
+      .shot--hero {
+        break-before: auto;
+        page-break-before: auto;
+      }
+      .shot img {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        height: auto !important;
+        object-fit: cover !important;
+        object-position: top center;
+      }
+      .shot--hero img { max-height: 195mm !important; object-fit: contain !important; }
+      .shot figcaption { padding: 6px 10px 8px; font-size: 11px; }
+      .shot figcaption strong { font-size: 12px; }
+
+      .shot-grid {
+        gap: 8px;
+        margin-bottom: 10px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .shot-grid .shot img {
+        max-height: 78mm !important;
+        object-fit: cover !important;
+        object-position: top center;
+      }
+      .shot-grid--2 .shot img { max-height: 105mm !important; }
+
+      .section--after-shots {
+        break-before: auto;
+        page-break-before: auto;
+      }
+
+      .cta {
+        padding: 16px !important;
+        border-radius: 12px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .footer { margin-top: 12px; padding-top: 8px; }
     }
 
     @media (max-width: 720px) {
       .hero, .content { padding: 28px 20px; }
-      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .grid-2, .grid-3, .shot-grid--2, .shot-grid--3 { grid-template-columns: 1fr; }
       .hero h1 { font-size: 1.55rem; max-width: none; }
     }
   </style>
@@ -302,52 +430,113 @@
 
   <!-- Обложка -->
   <header class="hero">
-    <p class="hero__badge">Коммерческое предложение · выпускной проект</p>
-    <h1>VK SMM — кабинет ведения клиентов ВКонтакте с ИИ</h1>
-    <p class="hero__lead">
-      Веб-приложение для SMM-агентств и специалистов: контент-план, генерация текста и визуала,
-      согласование с клиентом, календарь, публикация во&nbsp;ВК и месячные отчёты —
-      в одном кабинете. С тарифа Pro — подключение ВК Реклама в настройках канала.
+    <p class="hero__badge">Коммерческое предложение · для SMM-агентств</p>
+    <h1>Больше прибыли с каждого клиента ВК — без расширения команды</h1>
+    <p class="landing-lead" style="color:rgba(244,241,234,.88);max-width:42rem">
+      VK SMM — кабинет агентства: контент-план, генерация текста и визуала,
+      согласование, публикация во&nbsp;ВК, отчёты. С тарифа Pro — ВК Реклама в том же канале.
     </p>
     <div class="hero__meta">
-      <span><strong>Для кого:</strong> агентства и SMM с 10+ клиентами ВК</span>
-      <span><strong>Формат:</strong> веб-кабинет (Python)</span>
+      <span><strong>Для кого:</strong> владельцы агентств и команды с 10+ клиентами ВК</span>
       <span><strong>Старт:</strong> 14 дней Free</span>
+      <span><strong>Окупаемость:</strong> часто уже на 1-м новом клиенте</span>
     </div>
   </header>
 
   <div class="content">
 
-    <!-- Проблема -->
+    <!-- Проблема в деньгах -->
     <section class="section">
-      <p class="eyebrow">Проблема</p>
-      <h2>Рост портфеля упирается в рутину</h2>
+      <p class="eyebrow">Проблема в деньгах</p>
+      <h2>Агентства растут до потолка себестоимости</h2>
+      <p>
+        Клиентов находить умеют. Упираются в другое: каждый новый проект требует часов менеджера,
+        дизайна, согласований и контроля. Чтобы взять ещё клиента — часто приходится нанимать.
+      </p>
+      <div class="grid-2">
+        <div class="card card--accent">
+          <h3>Среднее агентство</h3>
+          <p><strong>20 клиентов × 50 000 ₽ = ≈ 1 000 000 ₽</strong> оборота в месяц</p>
+        </div>
+        <div class="card card--accent">
+          <h3>После автоматизации рутины</h3>
+          <p><strong>≈ 160–180 тыс. ₽</strong> дополнительной прибыли в месяц на портфеле.
+          Сервис окупается в первый месяц.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Экономика -->
+    <section class="section section--break">
+      <p class="eyebrow">Экономика агентства</p>
+      <h2>Что меняется на одном клиенте</h2>
       <div class="grid-2">
         <div class="card">
-          <h3>Без кабинета</h3>
+          <h3>До VK SMM</h3>
           <ul>
-            <li>Telegram + Excel + папки с файлами</li>
-            <li>Менеджер вручную собирает каждый пост</li>
-            <li>Клиент правит ночью — команда тушит пожар</li>
-            <li>Чтобы взять нового клиента — нужен новый человек</li>
-            <li>Нет отчёта → сложно продлить договор</li>
+            <li>Средний чек: <strong>50 000 ₽</strong></li>
+            <li>Расходы: <strong>26 000 ₽</strong></li>
+            <li>Прибыль: <strong>24 000 ₽</strong></li>
           </ul>
         </div>
         <div class="card card--accent">
           <h3>С VK SMM</h3>
           <ul>
-            <li>Один кабинет на всех клиентов ВК</li>
-            <li>План и согласование — одной ссылкой</li>
-            <li>ИИ готовит текст, картинку и видео</li>
-            <li>Публикация по расписанию</li>
-            <li>Месячный отчёт помогает продлевать контракт</li>
+            <li>Средний чек: <strong>50 000 ₽</strong></li>
+            <li>Расходы: <strong>~19 000 ₽</strong></li>
+            <li>Прибыль: <strong>~31 000 ₽</strong></li>
           </ul>
         </div>
       </div>
+      <p><strong>+7–10 тыс. ₽ доп. прибыли с каждого клиента ежемесячно.</strong>
+      На 10 клиентах ≈80–90 тыс. ₽/мес, на 20 — ≈160–180 тыс. ₽/мес — без пропорционального найма.</p>
+      <table>
+        <thead><tr><th>Клиентов</th><th>Доп. прибыль / мес*</th></tr></thead>
+        <tbody>
+          <tr><td>10</td><td class="price">≈ 80–90 тыс. ₽</td></tr>
+          <tr><td>20</td><td class="price">≈ 160–180 тыс. ₽</td></tr>
+          <tr><td>30</td><td class="price">≈ 240–270 тыс. ₽</td></tr>
+          <tr><td>50</td><td class="price">≈ 400–450 тыс. ₽</td></tr>
+        </tbody>
+      </table>
+      <p class="note">*При среднем чеке ~50 тыс. ₽ и снижении себестоимости на 25–40%.</p>
+    </section>
+
+    <!-- Окупаемость + рынок -->
+    <section class="section section--break">
+      <p class="eyebrow">Окупаемость</p>
+      <h2>Почему сервис окупается уже на первом новом клиенте</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Стоимость сервиса</h3>
+          <p><strong>≈ 4–10 тыс. ₽/мес</strong></p>
+          <p class="note">Пример: Стандарт + 2×Бизнес = 4 070 ₽</p>
+        </div>
+        <div class="card card--accent">
+          <h3>Прибыль с 1 клиента</h3>
+          <p><strong>≈ 24–31 тыс. ₽/мес</strong></p>
+          <p class="note">Один новый клиент окупает сервис несколько раз</p>
+        </div>
+      </div>
+
+      <p class="eyebrow" style="margin-top:1.5rem">Сравнение с рынком</p>
+      <h2>Почему не «ещё один ChatGPT»</h2>
+      <table>
+        <thead><tr><th>Задача</th><th>Сейчас</th><th>VK SMM</th></tr></thead>
+        <tbody>
+          <tr><td>Переписка и правки</td><td>Telegram</td><td>согласование по ссылке</td></tr>
+          <tr><td>Тексты и брифы</td><td>Google Docs / ChatGPT</td><td>план + генерация в кабинете</td></tr>
+          <tr><td>Учёт и статусы</td><td>Excel</td><td>панель по всем клиентам</td></tr>
+          <tr><td>Визуал</td><td>Canva / отдельно</td><td>картинка и видео в стиле канала</td></tr>
+          <tr><td>Публикация</td><td>планировщик / вручную</td><td>календарь + ВК</td></tr>
+          <tr><td>Отчёт клиенту</td><td>собирают вручную</td><td>месячный отчёт Excel/PDF</td></tr>
+          <tr><td><strong>Всё вместе</strong></td><td>5–7 сервисов</td><td><strong>один кабинет</strong></td></tr>
+        </tbody>
+      </table>
     </section>
 
     <!-- Решение -->
-    <section class="section">
+    <section class="section section--break">
       <p class="eyebrow">Решение</p>
       <h2>Что делает продукт</h2>
       <div class="grid-3">
@@ -390,85 +579,87 @@
       </ol>
     </section>
 
-    <!-- Скриншоты -->
-    <section class="section section--break">
+    <!-- Скриншоты — плотная сетка (и на экране, и в PDF) -->
+    <section class="section section--shots">
       <p class="eyebrow">Результаты работы</p>
       <h2>Скриншоты интерфейса</h2>
-      <p>Реальные экраны рабочего кабинета VK SMM (локальный запуск, июль 2026).</p>
+      <p>Реальные экраны рабочего кабинета VK SMM.</p>
 
-      <figure class="shot">
-        <img src="kp-screens/01-landing-hero.png" alt="Лендинг VK SMM — герой" />
+      <figure class="shot shot--hero">
+        <img src="kp-screens/04-manager.png?v=3" alt="Панель управления агентства" />
         <figcaption>
-          <strong>1. Лендинг продукта</strong>
-          Позиционирование для агентств: больше прибыли с клиента ВК без расширения штата.
-        </figcaption>
-      </figure>
-
-      <figure class="shot">
-        <img src="kp-screens/04-manager.png" alt="Панель управления агентства" />
-        <figcaption>
-          <strong>2. Панель управления</strong>
+          <strong>1. Панель управления</strong>
           Все клиенты списком: статусы, просрочки, ближайшие публикации, быстрые действия.
         </figcaption>
       </figure>
 
-      <figure class="shot">
-        <img src="kp-screens/09-content-plan.png" alt="Контент-план с ИИ-маркетологом" />
-        <figcaption>
-          <strong>3. Контент-план</strong>
-          ИИ-маркетолог собирает темы и даты; план можно отправить клиенту на согласование.
-        </figcaption>
-      </figure>
+      <div class="shot-grid shot-grid--3">
+        <figure class="shot">
+          <img src="kp-screens/09-content-plan.png?v=3" alt="Контент-план" />
+          <figcaption>
+            <strong>2. Контент-план</strong>
+            ИИ предлагает темы и даты на период.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/08-generate.png?v=3" alt="Генерация поста" />
+          <figcaption>
+            <strong>3. Генерация</strong>
+            Текст, картинка, видео в стиле канала.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/05-calendar.png?v=3" alt="Календарь" />
+          <figcaption>
+            <strong>4. Календарь</strong>
+            Публикации по расписанию.
+          </figcaption>
+        </figure>
+      </div>
 
-      <figure class="shot">
-        <img src="kp-screens/08-generate.png" alt="Генерация поста" />
-        <figcaption>
-          <strong>4. Генерация поста</strong>
-          Тема, рубрика, материалы, веб-поиск, картинка и видео — мультиагентная цепочка.
-        </figcaption>
-      </figure>
+      <div class="shot-grid shot-grid--2">
+        <figure class="shot">
+          <img src="kp-screens/06-report.png?v=3" alt="Отчёт клиенту" />
+          <figcaption>
+            <strong>5. Месячный отчёт</strong>
+            Сводка и выгрузка Excel / PDF.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/02-pricing.png?v=3" alt="Тарифы" />
+          <figcaption>
+            <strong>6. Тарифы продукта</strong>
+            Кабинет + оплата за активные каналы.
+          </figcaption>
+        </figure>
+      </div>
 
-      <figure class="shot">
-        <img src="kp-screens/05-calendar.png" alt="Календарь постинга" />
-        <figcaption>
-          <strong>5. Календарь постинга</strong>
-          Расписание публикаций по каналу; подсветка постов, которые пора готовить.
-        </figcaption>
-      </figure>
-
-      <figure class="shot">
-        <img src="kp-screens/06-report.png" alt="Месячный отчёт клиенту" />
-        <figcaption>
-          <strong>6. Месячный отчёт клиенту</strong>
-          Сводка постов и рубрик, выгрузка Excel/PDF — аргумент для продления договора.
-        </figcaption>
-      </figure>
-
-      <figure class="shot">
-        <img src="kp-screens/03-vk-ads.png" alt="Блок ВК Реклама на лендинге" />
-        <figcaption>
-          <strong>7. Модуль ВК Реклама</strong>
-          Контент и реклама клиента — в одном кабинете канала (тариф Pro, статус «Скоро»).
-        </figcaption>
-      </figure>
-
-      <figure class="shot">
-        <img src="kp-screens/02-pricing.png" alt="Тарифы VK SMM" />
-        <figcaption>
-          <strong>8. Тарифы</strong>
-          Функции кабинета + оплата только за активные каналы клиентов.
-        </figcaption>
-      </figure>
+      <div class="shot-grid shot-grid--2">
+        <figure class="shot">
+          <img src="kp-screens/03-vk-ads.png?v=3" alt="ВК Реклама" />
+          <figcaption>
+            <strong>7. ВК Реклама</strong>
+            В тарифе Pro — в кабинете канала.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/07-channels.png?v=3" alt="Каналы" />
+          <figcaption>
+            <strong>8. Каналы клиентов</strong>
+            Все проекты ВК в одном списке.
+          </figcaption>
+        </figure>
+      </div>
     </section>
 
     <!-- Технологии -->
-    <section class="section section--break">
+    <section class="section section--after-shots">
       <p class="eyebrow">Технологии</p>
       <h2>Нейросети и API</h2>
       <div class="card">
         <p>
           Проект реализован на <strong>Python</strong> (веб-кабинет Flask).
-          Генерация идёт через цепочку агентов: поиск → проверка актуальности → текст → промпт визуала → картинка/видео → публикация ВК.
+          Генерация идёт через цепочку агентов: поиск, проверка актуальности, текст, промпт визуала, картинка/видео, публикация ВК.
         </p>
         <ul class="tech-list">
           <li>Claude (текст через KIE / резерв VseGPT)</li>
@@ -556,47 +747,47 @@
       </p>
     </section>
 
-    <!-- Выгода -->
-    <section class="section">
-      <p class="eyebrow">Эффект для агентства</p>
-      <h2>Зачем бизнесу</h2>
-      <div class="grid-2">
-        <div class="card">
-          <h3>Больше клиентов на менеджера</h3>
-          <p>Рутину забирает кабинет — команда не растёт пропорционально портфелю.</p>
-        </div>
-        <div class="card">
-          <h3>Проще продлевать договоры</h3>
-          <p>Каждый месяц есть отчёт: разговор с клиентом на цифрах, не «на доверии».</p>
-        </div>
-        <div class="card">
-          <h3>Меньше хаоса</h3>
-          <p>Не десятки чатов и таблиц. Один экран — кто горит, кто ждёт, кто уже в ВК.</p>
-        </div>
-        <div class="card">
-          <h3>Один сервис: контент + реклама</h3>
-          <p>С Pro рекламный кабинет ВК рядом с планом и отчётом — меньше переключений.</p>
-        </div>
+    <!-- Финал -->
+    <section class="section section--finale">
+      <p class="eyebrow">Итог для владельца</p>
+      <h2>Что получает агентство</h2>
+      <ul class="steps" style="list-style:none;padding:0;counter-reset:none">
+        <li>✔ прибыль с клиента выше</li>
+        <li>✔ менеджер ведёт больше проектов</li>
+        <li>✔ меньше ошибок и просрочек</li>
+        <li>✔ быстрее согласования</li>
+        <li>✔ выше шанс продлить договор (есть отчёт)</li>
+        <li>✔ не нужен новый сотрудник при каждом скачке роста</li>
+      </ul>
+      <div class="card card--accent" style="margin:1.25rem 0">
+        <p>
+          Большинство агентств перестают расти не потому, что нет клиентов.
+          Они перестают расти, потому что команда больше не справляется.
+        </p>
+        <p class="mb-0">
+          <strong>VK SMM снимает это ограничение:</strong> автоматизирует рутину и позволяет
+          обслуживать больше проектов без пропорционального увеличения штата.
+        </p>
       </div>
     </section>
 
     <!-- CTA -->
     <section class="cta">
-      <h2>Готовы масштабировать портфель ВК?</h2>
+      <h2>Попробовать бесплатно 14 дней</h2>
       <p>
-        Начните с одного проекта: настройка канала → контент-план → согласование → публикация.
-        Дальше — рост портфеля без пропорционального роста штата.
+        Один проект → контент-план → согласование → публикация.
+        Дальше — рост портфеля на той же команде.
       </p>
       <div class="cta__row">
         <span><strong>Продукт:</strong> VK SMM</span>
-        <span><strong>Демо:</strong> локальный кабинет http://127.0.0.1:5050</span>
-        <span><strong>Документ:</strong> коммерческое предложение для выпускного проекта</span>
+        <span><strong>Демо:</strong> http://127.0.0.1:5050</span>
+        <span><strong>Модель:</strong> тариф + активные каналы</span>
       </div>
     </section>
 
     <footer class="footer">
       VK SMM · коммерческое предложение · июль 2026.
-      Скриншоты: папка <code>kp-screens</code> рядом с этим файлом.
+      Расчёты — ориентиры; факт зависит от чека и процессов агентства.
       Не содержит API-ключей и паролей.
     </footer>
   </div>
