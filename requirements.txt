@@ -1,0 +1,21 @@
+# Веб-приложение (Flask)
+flask>=3.0
+flask-login>=0.6
+flask-sqlalchemy>=3.1
+flask-bcrypt>=1.0
+flask-wtf>=1.2
+email-validator>=2.0
+
+# Чтение материалов
+python-docx>=1.1
+pypdf>=5.0
+openpyxl>=3.1
+xlrd>=2.0
+# опционально для старых .doc на Windows (если установлен Word):
+# pywin32
+
+# Экспорт отчётов
+reportlab>=4.0
+
+# Уже использовалось в проекте
+playwright

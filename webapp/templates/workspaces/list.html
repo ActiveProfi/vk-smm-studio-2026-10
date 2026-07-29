@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Каналы · VK SMM{% endblock %}
+{% block content %}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h3 mb-1">Каналы</h1>
+    <p class="text-muted mb-0">Нажмите на канал — откроется <strong>Контент-план</strong> с ИИ-помощником.</p>
+  </div>
+  <a class="btn btn-outline-dark" href="{{ url_for('workspaces.create_workspace') }}">Новый канал</a>
+</div>
+
+{% set selected = active_ws or (workspaces[0] if workspaces else none) %}
+
+<div id="channel-toolbar" class="channel-toolbar mb-4 {% if not selected %}d-none{% endif %}">
+  <div class="channel-toolbar__info">
+    <span class="small text-muted">Выбран канал</span>
+    {% if selected %}
+    <a class="channel-toolbar__name-link" id="toolbar-name-link"
+       href="{{ url_for('workspaces.content_plan', workspace_id=selected.id) }}">
+      <strong id="toolbar-name">{{ selected.name }}</strong>
+    </a>
+    {% else %}
+    <strong id="toolbar-name"></strong>
+    {% endif %}
+    <span class="small text-muted" id="toolbar-meta">
+      {% if selected %}{{ selected.theme or 'Тематика не указана' }} · группа {{ selected.vk_group_id or '—' }}{% endif %}
+    </span>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-accent" id="toolbar-plan"
+       href="{{ url_for('workspaces.content_plan', workspace_id=selected.id) if selected else '#' }}">Контент-план</a>
+    <a class="btn btn-outline-dark" id="toolbar-generate" href="{{ url_for('smm.generate') if selected else '#' }}">Генерация</a>
+    <a class="btn btn-outline-dark" id="toolbar-drafts" href="{{ url_for('smm.dashboard') if selected else '#' }}">Черновики</a>
+  </div>
+</div>
+
+<div class="row g-3" id="channel-list">
+  {% for ws in workspaces %}
+  <div class="col-md-6">
+    <button type="button"
+            class="channel-pick panel h-100 text-start w-100 {% if selected and ws.id == selected.id %}channel-pick--selected{% endif %}"
+            data-id="{{ ws.id }}"
+            data-name="{{ ws.name }}"
+            data-theme="{{ ws.theme or 'Тематика не указана' }}"
+            data-group="{{ ws.vk_group_id or '—' }}"
+            data-select-url="{{ url_for('workspaces.select_workspace', workspace_id=ws.id) }}"
+            data-plan-url="{{ url_for('workspaces.content_plan', workspace_id=ws.id) }}">
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <span class="h5 mb-0">{{ ws.name }}</span>
+        <span class="badge text-bg-success channel-pick__badge {% if not selected or ws.id != selected.id %}d-none{% endif %}">выбран</span>
+      </div>
+      <p class="text-muted small mb-2">{{ ws.theme or 'Тематика не указана' }}</p>
+      <p class="small mb-3">Группа ВК: <code>{{ ws.vk_group_id or '—' }}</code> · рубрик: {{ ws.rubrics|length }}</p>
+      <div class="d-flex flex-wrap gap-2" onclick="event.stopPropagation()">
+        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('workspaces.edit_workspace', workspace_id=ws.id) }}">Настройки</a>
+        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('workspaces.rubrics', workspace_id=ws.id) }}">Рубрики</a>
+        <a class="btn btn-sm btn-accent" href="{{ url_for('workspaces.content_plan', workspace_id=ws.id) }}">Контент-план</a>
+      </div>
+    </button>
+  </div>
+  {% else %}
+  <div class="col-12"><div class="panel">Каналов пока нет. Нажмите «Новый канал».</div></div>
+  {% endfor %}
+</div>
+
+<script>
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const toolbar = document.getElementById("channel-toolbar");
+  const nameEl = document.getElementById("toolbar-name");
+  const nameLink = document.getElementById("toolbar-name-link");
+  const metaEl = document.getElementById("toolbar-meta");
+  const planBtn = document.getElementById("toolbar-plan");
+  const genBtn = document.getElementById("toolbar-generate");
+  const draftsBtn = document.getElementById("toolbar-drafts");
+  const cards = document.querySelectorAll(".channel-pick");
+
+  function selectCard(card) {
+    cards.forEach((c) => {
+      c.classList.remove("channel-pick--selected");
+      c.querySelector(".channel-pick__badge")?.classList.add("d-none");
+    });
+    card.classList.add("channel-pick--selected");
+    card.querySelector(".channel-pick__badge")?.classList.remove("d-none");
+
+    nameEl.textContent = card.dataset.name || "";
+    metaEl.textContent = (card.dataset.theme || "") + " · группа " + (card.dataset.group || "—");
+    if (nameLink && card.dataset.planUrl) nameLink.href = card.dataset.planUrl;
+    if (planBtn && card.dataset.planUrl) planBtn.href = card.dataset.planUrl;
+    toolbar?.classList.remove("d-none");
+  }
+
+  async function activateChannel(card, goPlan) {
+    const url = card.dataset.selectUrl;
+    if (!url) return;
+    selectCard(card);
+    const planUrl = card.dataset.planUrl || "{{ url_for('workspaces.list_workspaces') }}";
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      const data = res.ok ? await res.json().catch(() => ({})) : {};
+      if (goPlan) {
+        window.location.href = data.content_plan_url || planUrl;
+        return;
+      }
+      if (data.generate_url && genBtn) genBtn.href = data.generate_url;
+      if (data.drafts_url && draftsBtn) draftsBtn.href = data.drafts_url;
+    } catch (e) {
+      if (goPlan) window.location.href = planUrl;
+    }
+  }
+
+  cards.forEach((card) => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("a")) return;
+      // Клик по карточке канала → Контент-план
+      activateChannel(card, true);
+    });
+  });
+})();
+</script>
+{% endblock %}

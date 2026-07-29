@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+{% block title %}Предпросмотр · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h3 mb-1">Предпросмотр</h1>
+    <p class="text-muted mb-0">{{ draft.topic }} · <code>{{ draft.post_type }}</code> ·
+      <span class="badge badge-status-{{ draft.status }}">{{ draft.status }}</span>
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('smm.dashboard') }}">К черновикам</a>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="panel">
+      <h2 class="h6 text-muted">Текст поста</h2>
+      <div class="preview-text">{{ draft.post_text | vk_post_html | safe }}</div>
+    </div>
+    {% if draft.relevance_report %}
+    <div class="panel mt-3">
+      <h2 class="h6 text-muted">Проверка актуальности</h2>
+      <pre class="small mb-0" style="max-height:220px;overflow:auto">{{ draft.relevance_report }}</pre>
+    </div>
+    {% endif %}
+  </div>
+  <div class="col-lg-5">
+    <div class="panel media-preview" id="visual">
+      <h2 class="h6 text-muted">Визуал</h2>
+      <p class="small text-muted mb-2" id="visual-checkboxes-hint">
+        {% if draft.image_url or draft.video_url %}
+          Галочки ниже — что попадёт в пост при публикации в ВК.
+        {% else %}
+          Отметьте, что создать: картинку, видео или оба варианта.
+        {% endif %}
+      </p>
+      <div id="preview-image-block" class="{% if not draft.image_url %}d-none{% endif %}">
+      {% if draft.image_url %}
+        <img src="{{ draft.image_url }}" alt="Превью картинки" id="preview-image">
+        <a class="btn btn-outline-dark btn-sm w-100 mt-2" href="{{ url_for('smm.preview_visual_full', draft_id=draft.id, kind='image') }}">Открыть визуал полностью</a>
+        <a class="btn btn-outline-secondary btn-sm w-100 mt-2" href="{{ url_for('smm.preview_download_visual', draft_id=draft.id, kind='image') }}">Скачать изображение</a>
+      {% endif %}
+      </div>
+      <div id="preview-video-block" class="{% if not draft.video_url %}d-none{% else %}mt-2{% endif %}">
+      {% if draft.video_url %}
+        <video controls src="{{ draft.video_url }}" id="preview-video"></video>
+        <a class="btn btn-outline-dark btn-sm w-100 mt-2" href="{{ url_for('smm.preview_visual_full', draft_id=draft.id, kind='video') }}">Открыть визуал полностью</a>
+        <a class="btn btn-outline-secondary btn-sm w-100 mt-2" href="{{ url_for('smm.preview_download_visual', draft_id=draft.id, kind='video') }}">Скачать видео</a>
+      {% endif %}
+      </div>
+      {% if draft.generation_warning and not draft.image_url and not draft.video_url %}
+        <div class="alert alert-warning small mb-2">
+          <strong>Визуал не получился в прошлый раз.</strong><br>
+          {{ draft.generation_warning }}<br>
+          <span class="text-muted">Нажмите «Сгенерировать визуал» ниже — проверка уже исправлена.</span>
+        </div>
+      {% endif %}
+      <div class="mb-3 mt-2">
+        <div class="form-check">
+          <input class="form-check-input visual-publish-toggle" type="checkbox" id="vis-image"
+            {% if draft.image_url or draft.video_url %}
+              {% if publish_with_image %}checked{% endif %}{% if not draft.image_url %} disabled{% endif %}
+            {% else %}
+              checked
+            {% endif %}>
+          <label class="form-check-label" for="vis-image" id="vis-image-label">
+            {% if draft.image_url or draft.video_url %}Картинка в посте{% else %}Сгенерировать картинку{% endif %}
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input visual-publish-toggle" type="checkbox" id="vis-video"
+            {% if draft.image_url or draft.video_url %}
+              {% if publish_with_video %}checked{% endif %}{% if not draft.video_url %} disabled{% endif %}
+            {% endif %}>
+          <label class="form-check-label" for="vis-video" id="vis-video-label">
+            {% if draft.image_url or draft.video_url %}Видео в посте{% else %}Сгенерировать видео{% endif %}
+          </label>
+        </div>
+        <div id="visual-selection-status" class="small text-muted mt-1"></div>
+      </div>
+      {% if not draft.image_url and not draft.video_url %}
+        <button type="button" class="btn btn-accent w-100 mb-2" id="btn-visual">Сгенерировать визуал</button>
+        <p class="text-muted small mb-2">Текст поста уже сохранён — визуал создаётся отдельно, без перезапуска с нуля.</p>
+      {% else %}
+        <button type="button" class="btn btn-outline-dark btn-sm w-100 mb-2" id="btn-visual">Пересоздать визуал</button>
+      {% endif %}
+      <div class="border rounded p-3 mb-2">
+        <div class="fw-semibold mb-2">Загрузить свой визуал</div>
+        <form method="post" enctype="multipart/form-data" action="{{ url_for('smm.preview_upload_visual', draft_id=draft.id) }}">
+          {{ publish_form.hidden_tag() }}
+          <div class="mb-2">
+            <label class="form-label small mb-1">Изображение</label>
+            <input class="form-control" type="file" name="image_visual" accept=".png,.jpg,.jpeg,.webp,.gif,image/*">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Видео</label>
+            <input class="form-control" type="file" name="video_visual" accept=".mp4,.webm,.mov,.m4v,video/*">
+          </div>
+          <div class="form-text mb-2">Можно загрузить своё изображение, своё видео или оба файла сразу.</div>
+          <button type="submit" class="btn btn-outline-dark btn-sm w-100">Загрузить визуал</button>
+        </form>
+      </div>
+      <button type="button" class="btn btn-outline-dark btn-sm w-100 mb-2" id="btn-text-regen">Перегенерировать текст</button>
+    </div>
+
+    <div class="panel mt-3" style="border-color:#e8b84a!important">
+      <h2 class="h6">Согласование контент-плана</h2>
+      <p class="small text-muted mb-2">
+        Клиент согласует <strong>весь план</strong>, а не отдельные посты.
+        {% if plan_status %}<br>Статус плана этого поста: <strong>{{ plan_status }}</strong>{% endif %}
+      </p>
+      {% if workspace %}
+      <a class="btn btn-accent btn-sm w-100 mb-2" href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Страница согласования планов</a>
+      <a class="btn btn-outline-dark btn-sm w-100" href="{{ url_for('workspaces.content_plan', workspace_id=workspace.id) }}">Контент-план</a>
+      {% endif %}
+    </div>
+
+    <div class="panel mt-3">
+      <h2 class="h6">Опубликовать в ВК</h2>
+      {% if not vk_ready %}
+      <div class="alert alert-warning small py-2">
+        ВК ещё не подключен для этого канала.
+        <a href="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) if workspace else url_for('workspaces.list_workspaces') }}">Открыть настройки канала</a>
+        и нажать «Проверить подключение».
+      </div>
+      {% else %}
+      <p class="small text-muted mb-2">Группа: <code>{{ vk_group_label }}</code></p>
+      {% endif %}
+      <form method="post" id="publish-form">
+        {{ publish_form.hidden_tag() }}
+        <input type="hidden" name="form_action" value="publish">
+        <input type="hidden" name="publish_with_image" id="publish_with_image" value="{% if publish_with_image %}1{% else %}0{% endif %}">
+        <input type="hidden" name="publish_with_video" id="publish_with_video" value="{% if publish_with_video %}1{% else %}0{% endif %}">
+      {% if vk_ready %}
+        {{ publish_form.submit(class="btn btn-accent w-100") }}
+      {% else %}
+        <button type="button" class="btn btn-accent w-100" disabled>Опубликовать в ВК</button>
+      {% endif %}
+      </form>
+      {% if draft.vk_post_id %}
+        <p class="small text-success mt-2 mb-0">Уже опубликовано: post_id={{ draft.vk_post_id }}</p>
+      {% endif %}
+    </div>
+
+    <div class="panel mt-3">
+      <h2 class="h6">Календарь постинга</h2>
+      <form method="post" id="schedule-form">
+        {{ schedule_form.hidden_tag() }}
+        <input type="hidden" name="form_action" value="schedule">
+
+        <div class="mb-3">
+          <div class="form-label fw-semibold mb-2">Дата публикации</div>
+          <div class="datetime-row">
+            <label class="datetime-box">
+              <span class="datetime-box__hint">День</span>
+              {{ schedule_form.sched_day() }}
+              <span class="datetime-box__label">ДД</span>
+            </label>
+            <span class="datetime-sep">.</span>
+            <label class="datetime-box">
+              <span class="datetime-box__hint">Месяц</span>
+              {{ schedule_form.sched_month() }}
+              <span class="datetime-box__label">ММ</span>
+            </label>
+            <span class="datetime-sep">.</span>
+            <label class="datetime-box">
+              <span class="datetime-box__hint">Год</span>
+              {{ schedule_form.sched_year() }}
+              <span class="datetime-box__label">ГГГГ</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-label fw-semibold mb-2">Время публикации</div>
+          <div class="datetime-row">
+            <label class="datetime-box">
+              <span class="datetime-box__hint">Час</span>
+              {{ schedule_form.sched_hour() }}
+              <span class="datetime-box__label">ЧЧ</span>
+            </label>
+            <span class="datetime-sep">:</span>
+            <label class="datetime-box">
+              <span class="datetime-box__hint">Минута</span>
+              {{ schedule_form.sched_minute() }}
+              <span class="datetime-box__label">ММ</span>
+            </label>
+          </div>
+          <div class="form-text mt-2">Часовой пояс: Владивосток (+10). Пример: 20 . 07 . 2026 &nbsp; 10 : 00</div>
+        </div>
+
+        {% for field in [schedule_form.sched_day, schedule_form.sched_month, schedule_form.sched_year, schedule_form.sched_hour, schedule_form.sched_minute] %}
+          {% if field.errors %}
+            {% for err in field.errors %}
+              <div class="text-danger small mb-1">{{ err }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+
+        {% if draft.scheduled_for %}
+          <p class="small text-muted mb-2">Сейчас в календаре: <strong>{{ draft.scheduled_for }}</strong></p>
+        {% endif %}
+
+        {{ schedule_form.submit(class="btn btn-outline-dark w-100") }}
+      </form>
+    </div>
+  </div>
+</div>
+
+<div id="progress-overlay" class="progress-overlay d-none" aria-live="polite">
+  <div class="progress-card">
+    <div class="spinner-border text-dark mb-3" role="status"></div>
+    <h2 class="h5 mb-2" id="progress-title">Идёт генерация…</h2>
+    <p class="mb-3" id="progress-message">Запуск…</p>
+    <div class="progress mb-3" style="height: 12px;">
+      <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning" style="width: 3%"></div>
+    </div>
+    <p class="small text-muted mb-0">Не закрывайте вкладку — это может занять несколько минут.</p>
+    <div id="progress-warning-box" class="alert alert-warning mt-3 d-none mb-0"></div>
+    <div id="progress-error-box" class="alert alert-danger mt-3 d-none mb-0"></div>
+    <button type="button" class="btn btn-accent mt-3 d-none" id="progress-approve">Утвердить и продолжить</button>
+    <button type="button" class="btn btn-outline-dark mt-3 d-none" id="progress-close">Закрыть</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const overlay = document.getElementById("progress-overlay");
+  const progressTitle = document.getElementById("progress-title");
+  const progressBar = document.getElementById("progress-bar");
+  const progressMessage = document.getElementById("progress-message");
+  const progressSpinner = document.querySelector("#progress-overlay .spinner-border");
+  const progressWarning = document.getElementById("progress-warning-box");
+  const progressError = document.getElementById("progress-error-box");
+  const progressApprove = document.getElementById("progress-approve");
+  const progressClose = document.getElementById("progress-close");
+  const btnVisual = document.getElementById("btn-visual");
+  const btnTextRegen = document.getElementById("btn-text-regen");
+  const visImage = document.getElementById("vis-image");
+  const visVideo = document.getElementById("vis-video");
+  const publishImageField = document.getElementById("publish_with_image");
+  const publishVideoField = document.getElementById("publish_with_video");
+  const previewImageBlock = document.getElementById("preview-image-block");
+  const previewVideoBlock = document.getElementById("preview-video-block");
+  const visualSelectionStatus = document.getElementById("visual-selection-status");
+  const selectionUrl = "{{ url_for('smm.preview_visual_selection', draft_id=draft.id) }}";
+  let selectionTimer = null;
+  let pollTimer = null;
+  let currentJobId = null;
+
+  function syncPublishHiddenFields() {
+    if (publishImageField) publishImageField.value = visImage?.checked ? "1" : "0";
+    if (publishVideoField) publishVideoField.value = visVideo?.checked ? "1" : "0";
+  }
+
+  function syncPreviewBlocks() {
+    if (previewImageBlock) {
+      previewImageBlock.classList.toggle("d-none", !(visImage?.checked && {{ 'true' if draft.image_url else 'false' }}));
+      previewImageBlock.classList.toggle("opacity-50", !visImage?.checked);
+    }
+    if (previewVideoBlock) {
+      previewVideoBlock.classList.toggle("d-none", !(visVideo?.checked && {{ 'true' if draft.video_url else 'false' }}));
+      previewVideoBlock.classList.toggle("opacity-50", !visVideo?.checked);
+    }
+  }
+
+  async function saveVisualSelection() {
+    syncPublishHiddenFields();
+    syncPreviewBlocks();
+    if (!visImage && !visVideo) return;
+    try {
+      const res = await fetch(selectionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          publish_with_image: !!visImage?.checked,
+          publish_with_video: !!visVideo?.checked,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && visualSelectionStatus) {
+        const parts = [];
+        if (data.publish_with_image) parts.push("картинка");
+        if (data.publish_with_video) parts.push("видео");
+        visualSelectionStatus.textContent = parts.length
+          ? "В VK уйдёт: " + parts.join(" + ")
+          : "Отметьте хотя бы один тип визуала.";
+      }
+    } catch (_) {}
+  }
+
+  document.querySelectorAll(".visual-publish-toggle").forEach((el) => {
+    el.addEventListener("change", () => {
+      if (!visImage?.checked && !visVideo?.checked) {
+        if (el === visImage && {{ 'true' if draft.image_url else 'false' }}) visImage.checked = true;
+        else if (el === visVideo && {{ 'true' if draft.video_url else 'false' }}) visVideo.checked = true;
+      }
+      clearTimeout(selectionTimer);
+      selectionTimer = setTimeout(saveVisualSelection, 250);
+    });
+  });
+  syncPublishHiddenFields();
+  syncPreviewBlocks();
+  saveVisualSelection();
+
+  document.getElementById("publish-form")?.addEventListener("submit", () => {
+    syncPublishHiddenFields();
+  });
+
+  function showError(msg) {
+    progressTitle.textContent = "Ошибка";
+    progressMessage.textContent = "Ошибка";
+    progressBar.style.width = "100%";
+    progressBar.classList.remove("progress-bar-animated", "bg-warning");
+    progressBar.classList.add("bg-danger");
+    progressSpinner?.classList.add("d-none");
+    progressWarning?.classList.add("d-none");
+    if (progressError) {
+      progressError.textContent = msg;
+      progressError.classList.remove("d-none");
+    }
+    progressClose?.classList.remove("d-none");
+    btnVisual.disabled = false;
+    if (btnTextRegen) btnTextRegen.disabled = false;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function showApproval(job) {
+    currentJobId = job.id || currentJobId;
+    progressTitle.textContent = "Нужно подтверждение";
+    progressMessage.textContent = "Агент актуальности нашёл сомнительные места";
+    progressBar.style.width = Math.max(18, Number(job.percent) || 18) + "%";
+    progressBar.classList.remove("progress-bar-animated", "bg-danger");
+    progressBar.classList.add("bg-warning");
+    progressSpinner?.classList.add("d-none");
+    progressError?.classList.add("d-none");
+    if (progressWarning) {
+      progressWarning.textContent = job.warning || job.message || "Проверьте замечание и подтвердите продолжение.";
+      progressWarning.classList.remove("d-none");
+    }
+    progressApprove?.classList.remove("d-none");
+    progressClose?.classList.remove("d-none");
+    btnVisual.disabled = false;
+    if (btnTextRegen) btnTextRegen.disabled = false;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  progressClose?.addEventListener("click", () => overlay?.classList.add("d-none"));
+  progressApprove?.addEventListener("click", async () => {
+    if (!currentJobId) return;
+    progressApprove.disabled = true;
+    try {
+      const res = await fetch("{{ url_for('smm.generate_job_approve', job_id='JOB_ID') }}".replace("JOB_ID", currentJobId), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        showError(data.error || "Не удалось продолжить генерацию");
+        return;
+      }
+      progressWarning?.classList.add("d-none");
+      progressApprove?.classList.add("d-none");
+      progressClose?.classList.add("d-none");
+      progressSpinner?.classList.remove("d-none");
+      progressTitle.textContent = "Идёт генерация…";
+      progressMessage.textContent = "Продолжаем после подтверждения…";
+      progressBar.style.width = "3%";
+      progressBar.classList.add("progress-bar-animated", "bg-warning");
+      progressBar.classList.remove("bg-danger");
+      currentJobId = data.job_id || currentJobId;
+      pollJob(currentJobId);
+    } catch (err) {
+      showError(String(err));
+    } finally {
+      progressApprove.disabled = false;
+    }
+  });
+
+  const hasDraftImage = {{ 'true' if draft.image_url else 'false' }};
+  const hasDraftVideo = {{ 'true' if draft.video_url else 'false' }};
+
+  btnVisual?.addEventListener("click", async () => {
+    let generate_image = !!document.getElementById("vis-image")?.checked;
+    let generate_video = !!document.getElementById("vis-video")?.checked;
+    if (!hasDraftImage && !hasDraftVideo) {
+      if (!generate_image && !generate_video) {
+        generate_image = true;
+      }
+    }
+    if (!generate_image && !generate_video) {
+      showError("Выберите картинку или видео.");
+      overlay?.classList.remove("d-none");
+      return;
+    }
+    overlay?.classList.remove("d-none");
+    progressWarning?.classList.add("d-none");
+    progressError?.classList.add("d-none");
+    progressClose?.classList.add("d-none");
+    progressApprove?.classList.add("d-none");
+    progressSpinner?.classList.remove("d-none");
+    progressTitle.textContent = "Идёт генерация визуала…";
+    progressMessage.textContent = "Запуск…";
+    progressBar.style.width = "3%";
+    progressBar.classList.add("progress-bar-animated", "bg-warning");
+    progressBar.classList.remove("bg-danger");
+    btnVisual.disabled = true;
+
+    try {
+      const res = await fetch("{{ url_for('smm.preview_visual_start', draft_id=draft.id) }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ generate_image, generate_video }),
+      });
+      const data = await res.json();
+      if (!data.ok || !data.job_id) {
+        showError(data.error || "Не удалось запустить генерацию визуала");
+        return;
+      }
+      currentJobId = data.job_id;
+      pollJob(data.job_id);
+    } catch (err) {
+      showError(String(err));
+    }
+  });
+
+  btnTextRegen?.addEventListener("click", async () => {
+    overlay?.classList.remove("d-none");
+    progressWarning?.classList.add("d-none");
+    progressError?.classList.add("d-none");
+    progressClose?.classList.add("d-none");
+    progressApprove?.classList.add("d-none");
+    progressSpinner?.classList.remove("d-none");
+    progressTitle.textContent = "Идёт перегенерация текста…";
+    progressMessage.textContent = "Запуск…";
+    progressBar.style.width = "3%";
+    progressBar.classList.add("progress-bar-animated", "bg-warning");
+    progressBar.classList.remove("bg-danger");
+    btnTextRegen.disabled = true;
+
+    try {
+      const res = await fetch("{{ url_for('smm.preview_text_start', draft_id=draft.id) }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!data.ok || !data.job_id) {
+        showError(data.error || "Не удалось запустить перегенерацию текста");
+        return;
+      }
+      currentJobId = data.job_id;
+      pollJob(data.job_id);
+    } catch (err) {
+      showError(String(err));
+    }
+  });
+
+  function pollJob(jobId) {
+    currentJobId = jobId;
+    const statusUrl = "{{ url_for('smm.generate_job_status', job_id='JOB_ID') }}".replace("JOB_ID", jobId);
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(statusUrl);
+        const data = await res.json();
+        if (!data.ok || !data.job) return;
+        const job = data.job;
+        progressMessage.textContent = job.message || "Идёт работа…";
+        progressBar.style.width = Math.max(3, Number(job.percent) || 3) + "%";
+        if (job.status === "error") {
+          showError(job.error || "Ошибка генерации");
+          return;
+        }
+        if (job.status === "approval_required") {
+          showApproval(job);
+          return;
+        }
+        if (job.status === "done") {
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          window.location.href = "{{ url_for('smm.preview', draft_id=draft.id) }}?t=" + Date.now();
+        }
+      } catch (_) {}
+    }, 1500);
+  }
+
+  // Автопереход на следующую ячейку после ввода цифр
+  const cells = Array.from(document.querySelectorAll("#schedule-form .datetime-cell"));
+  cells.forEach((input, idx) => {
+    input.addEventListener("input", () => {
+      input.value = input.value.replace(/\D/g, "").slice(0, input.maxLength || 4);
+      const max = Number(input.maxLength || 2);
+      if (input.value.length >= max && cells[idx + 1]) {
+        cells[idx + 1].focus();
+        cells[idx + 1].select();
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

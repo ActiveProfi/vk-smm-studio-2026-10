@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{% if rubric %}Рубрика · {{ rubric.title }}{% else %}Новая рубрика{% endif %}{% endblock %}
+{% block content %}
+<p class="lk-kicker mb-1">Кабинет агентства</p>
+<h1 class="h3 mb-3">{% if rubric %}Изменить рубрику{% else %}Новая рубрика{% endif %}</h1>
+<p class="text-muted">Канал: {{ workspace.name }}</p>
+<div class="panel" style="max-width:860px">
+  <form method="post" id="rubric-form">
+    {{ form.hidden_tag() }}
+    <div class="row g-3">
+      <div class="col-md-4">{{ form.code.label(class="form-label") }}{{ form.code(class="form-control", id="code") }}</div>
+      <div class="col-md-5">{{ form.title.label(class="form-label") }}{{ form.title(class="form-control", id="title") }}</div>
+      <div class="col-md-3">{{ form.sort_order.label(class="form-label") }}{{ form.sort_order(class="form-control") }}</div>
+      <div class="col-12">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+          {{ form.prompt_text.label(class="form-label mb-0") }}
+          <button type="button" class="btn btn-sm btn-outline-warning" id="btn-ai-rubric">ИИ генерация</button>
+        </div>
+        {{ form.prompt_text(class="form-control", id="prompt_text") }}
+        <div class="form-text">
+          Опишите структуру поста, тон, что можно/нельзя писать <strong>и стиль картинки</strong> для этой рубрики.
+          Кнопка «ИИ генерация» создаёт промпт с нуля или улучшает уже написанный — с учётом тематики и базы знаний канала.
+          После генерации нажмите «Сохранить рубрику».
+        </div>
+        <span class="small text-muted" id="ai-rubric-status"></span>
+      </div>
+      <div class="col-12 form-check ms-2">{{ form.is_active(class="form-check-input") }} {{ form.is_active.label(class="form-check-label") }}</div>
+      <div class="col-12">
+        {{ form.submit(class="btn btn-accent") }}
+        <a class="btn btn-outline-secondary ms-2" href="{{ url_for('workspaces.rubrics', workspace_id=workspace.id) }}">Назад</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const aiUrl = "{{ url_for('workspaces.ai_generate_rubric', workspace_id=workspace.id) }}";
+  const btn = document.getElementById("btn-ai-rubric");
+  const textarea = document.getElementById("prompt_text");
+  const statusEl = document.getElementById("ai-rubric-status");
+  if (!btn || !textarea) return;
+
+  btn.addEventListener("click", async () => {
+    const title = document.getElementById("title")?.value?.trim() || "";
+    const code = document.getElementById("code")?.value?.trim() || "";
+    if (title.length < 2 && code.length < 2) {
+      statusEl.textContent = "Сначала укажите название рубрики или код.";
+      statusEl.className = "small text-danger";
+      return;
+    }
+
+    const currentText = textarea.value.trim();
+    btn.disabled = true;
+    statusEl.textContent = currentText ? "ИИ улучшает промпт рубрики…" : "ИИ генерирует промпт рубрики…";
+    statusEl.className = "small text-muted";
+
+    try {
+      const res = await fetch(aiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          title,
+          code,
+          current_text: currentText,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        statusEl.textContent = data.error || "Не удалось сгенерировать";
+        statusEl.className = "small text-danger";
+        return;
+      }
+      textarea.value = data.text || "";
+      statusEl.textContent = data.improved
+        ? "Готово — промпт улучшен. Не забудьте сохранить рубрику."
+        : "Готово — промпт создан. Не забудьте сохранить рубрику.";
+      statusEl.className = "small text-success";
+    } catch (e) {
+      statusEl.textContent = "Ошибка сети";
+      statusEl.className = "small text-danger";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

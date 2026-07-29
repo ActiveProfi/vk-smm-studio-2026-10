@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}Контент-план · {{ workspace.name }}{% endblock %}
+{% block content %}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <p class="text-muted small mb-1">Канал</p>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h3 mb-1">Контент-план: {{ workspace.name }}</h1>
+    <p class="text-muted mb-0">
+      {{ workspace.theme or 'Тематика не указана' }} ·
+      <strong>ИИ-маркетолог</strong> анализирует канал и аудиторию, затем предлагает темы, даты и лучшее время публикации
+    </p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-dark" href="{{ url_for('workspaces.list_workspaces') }}">Все каналы</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Согласование</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('workspaces.rubrics', workspace_id=workspace.id) }}">Рубрики</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('smm.calendar') }}">Календарь</a>
+  </div>
+</div>
+
+{% if package_status %}
+<div class="alert {% if package_status.blocked %}alert-danger{% else %}alert-light border{% endif %} py-2 mb-3">
+  Пакет канала: <strong>{{ package_status.title }}</strong>
+  {% if package_status.unlimited %}
+  · без лимита
+  {% else %}
+  · {{ package_status.used }}/{{ package_status.limit }} постов в этом месяце
+  · осталось {{ package_status.left }}
+  {% endif %}
+  {% if package_status.blocked %}
+  <div class="small mt-1 mb-0">Лимит исчерпан — новый план в календарь не внести, пока не смените пакет.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if not rubrics %}
+<div class="alert alert-warning">
+  У канала нет активных рубрик.
+  <a href="{{ url_for('workspaces.rubrics', workspace_id=workspace.id) }}">Добавьте рубрики</a> — без них план составить нельзя.
+</div>
+{% endif %}
+
+<div class="panel mb-4">
+  <h2 class="h5 mb-3">Шаг 1. Период плана</h2>
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4 col-lg-3">
+      <label class="form-label" for="plan-start-date">С какой даты начинать</label>
+      <input type="date" class="form-control" id="plan-start-date" value="{{ today }}" required>
+      <div class="form-text">Первый день периода плана</div>
+    </div>
+    <div class="col-lg-5">
+      <label class="form-label d-block">Длительность</label>
+      <div class="d-flex flex-wrap gap-2" id="days-options" role="group" aria-label="Период">
+        {% for d in allowed_days %}
+        <label class="plan-day-card {% if d == 7 %}plan-day-card--active{% endif %}">
+          <input type="radio" name="plan_days" value="{{ d }}" {% if d == 7 %}checked{% endif %} class="visually-hidden">
+          <span class="plan-day-card__num">{{ d }}</span>
+          <span class="plan-day-card__label">дней</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="col-md-4 col-lg-2">
+      <label class="form-label" for="posts-count">Сколько постов (примерно)</label>
+      <input type="number" class="form-control" id="posts-count" min="3" max="40" value="{{ default_posts[7] }}">
+      <div class="form-text">Можно оставить как предлагает система</div>
+    </div>
+    <div class="col-md-4 col-lg-2">
+      <button type="button" class="btn btn-accent w-100" id="btn-generate-plan" {% if not rubrics %}disabled{% endif %}>
+        ИИ-маркетолог
+      </button>
+    </div>
+  </div>
+  <p class="small text-muted mt-3 mb-0" id="plan-hint">
+    Рубрик в канале: <strong>{{ rubrics|length }}</strong>.
+    ИИ-маркетолог опирается на настройки канала (описание, база знаний, стиль, рубрики),
+    предлагает темы, подсказки и лучшее время. Время потом можно поправить вручную.
+  </p>
+</div>
+
+<div class="panel mb-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h2 class="h5 mb-0">Сохранённые контент-планы</h2>
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Страница согласования</a>
+  </div>
+  {% if saved_plans %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>План</th>
+          <th>Статус</th>
+          <th>Тем</th>
+          <th>Календарь</th>
+          <th>Когда сохранён</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in saved_plans %}
+        {% set p = row.plan %}
+        <tr>
+          <td>{{ p.title or ('План #' ~ p.id) }}</td>
+          <td class="small">
+            {% if p.client_status == 'pending' %}<span class="badge text-bg-warning">на согласовании</span>
+            {% elif p.client_status == 'approved' %}<span class="badge text-bg-success">согласован</span>
+            {% elif p.client_status == 'rejected' %}<span class="badge text-bg-danger">на правки</span>
+            {% else %}{{ row.status_label }}{% endif %}
+          </td>
+          <td>{{ row.topics_count }}</td>
+          <td class="small">{% if p.saved_to_calendar %}да{% else %}ещё нет{% endif %}</td>
+          <td class="small">{% if p.created_at %}{{ p.created_at.strftime('%d.%m.%Y %H:%M') }}{% else %}—{% endif %}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-accent" href="{{ url_for('workspaces.content_plan_view', workspace_id=workspace.id, plan_id=p.id) }}">Открыть</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small mb-0">
+    Пока нет сохранённых планов. Они появятся после «Отправить план клиенту»
+    или «Сразу в календарь».
+  </p>
+  {% endif %}
+</div>
+
+<div class="panel mb-3 d-none" id="plan-result-panel">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h2 class="h5 mb-0">Шаг 2. Проверьте план</h2>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-outline-dark btn-sm" id="btn-regen">Снова ИИ-маркетолог</button>
+      <button type="button" class="btn btn-accent" id="btn-send-client">Отправить план клиенту</button>
+      {% if not require_client_approval %}
+      <button type="button" class="btn btn-outline-dark" id="btn-approve">Сразу в календарь</button>
+      {% endif %}
+    </div>
+  </div>
+  {% if require_client_approval %}
+  <div class="alert alert-warning py-2 small mb-3">
+    В канале включено согласование контент-плана клиентом.
+    Сначала отправьте план клиенту → после «Согласован» внесите в календарь на странице
+    <a href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Согласование</a>.
+  </div>
+  {% else %}
+  <div class="alert alert-light border py-2 small mb-3">
+    Клиент согласует <strong>весь план целиком</strong> (не каждый пост).
+    Можно сразу в календарь или сначала отправить клиенту.
+  </div>
+  {% endif %}
+  <div class="alert alert-light border d-none mb-3" id="plan-marketer-meta"></div>
+  <p class="small text-muted" id="plan-result-meta"></p>
+  <div class="table-responsive">
+    <table class="table align-middle mb-0" id="plan-table">
+      <thead>
+        <tr>
+          <th style="width:8.5rem">Дата</th>
+          <th style="width:6.5rem">Время</th>
+          <th style="width:8.5rem">Рубрика</th>
+          <th>Тема</th>
+          <th style="width:7rem">Формат</th>
+          <th>Подсказка</th>
+          <th style="width:3rem"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="plan-progress" class="progress-overlay d-none" aria-live="polite">
+  <div class="progress-card">
+    <div class="mb-2 fw-semibold" id="plan-progress-title">ИИ-маркетолог за работой…</div>
+    <div class="progress mb-2" role="progressbar">
+      <div class="progress-bar bg-warning text-dark" id="plan-progress-bar" style="width: 5%">5%</div>
+    </div>
+    <div class="small text-muted" id="plan-progress-msg">Подготовка…</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const defaultPosts = {{ default_posts | tojson }};
+  const generateUrl = {{ url_for('workspaces.content_plan_generate', workspace_id=workspace.id) | tojson }};
+  const jobStatusBase = {{ url_for('workspaces.content_plan_job_status', job_id='JOB') | tojson }};
+  const approveUrl = {{ url_for('workspaces.content_plan_approve', workspace_id=workspace.id) | tojson }};
+  const sendClientUrl = {{ url_for('workspaces.content_plan_send_client', workspace_id=workspace.id) | tojson }};
+  const requireClientApproval = {{ require_client_approval | tojson }};
+
+  const postsInput = document.getElementById("posts-count");
+  const startDateInput = document.getElementById("plan-start-date");
+  const btnGenerate = document.getElementById("btn-generate-plan");
+  const btnRegen = document.getElementById("btn-regen");
+  const btnApprove = document.getElementById("btn-approve");
+  const btnSendClient = document.getElementById("btn-send-client");
+  let lastPlanMeta = {};
+  const resultPanel = document.getElementById("plan-result-panel");
+  const resultMeta = document.getElementById("plan-result-meta");
+  const marketerMeta = document.getElementById("plan-marketer-meta");
+  const tbody = document.querySelector("#plan-table tbody");
+  const progress = document.getElementById("plan-progress");
+  const progressBar = document.getElementById("plan-progress-bar");
+  const progressMsg = document.getElementById("plan-progress-msg");
+
+  let planItems = [];
+
+  function selectedDays() {
+    const el = document.querySelector('input[name="plan_days"]:checked');
+    return el ? parseInt(el.value, 10) : 7;
+  }
+
+  function syncDayCards() {
+    document.querySelectorAll(".plan-day-card").forEach((card) => {
+      const input = card.querySelector('input[type="radio"]');
+      card.classList.toggle("plan-day-card--active", !!(input && input.checked));
+    });
+    const d = selectedDays();
+    if (defaultPosts[d] != null) postsInput.value = defaultPosts[d];
+  }
+
+  document.querySelectorAll('input[name="plan_days"]').forEach((input) => {
+    input.addEventListener("change", syncDayCards);
+  });
+  document.querySelectorAll(".plan-day-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const input = card.querySelector('input[type="radio"]');
+      if (input) {
+        input.checked = true;
+        syncDayCards();
+      }
+    });
+  });
+
+  function showProgress(show) {
+    progress.classList.toggle("d-none", !show);
+  }
+
+  function setProgress(percent, message) {
+    const p = Math.max(0, Math.min(100, percent || 0));
+    progressBar.style.width = p + "%";
+    progressBar.textContent = p + "%";
+    progressMsg.textContent = message || "";
+  }
+
+  function timeFromItem(item) {
+    if (item.time && /^\d{1,2}:\d{2}$/.test(item.time)) {
+      const [h, m] = item.time.split(":");
+      return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+    }
+    if (item.scheduled_for) {
+      try {
+        const dt = new Date(item.scheduled_for);
+        if (!isNaN(dt.getTime())) {
+          return String(dt.getHours()).padStart(2, "0") + ":" + String(dt.getMinutes()).padStart(2, "0");
+        }
+      } catch (e) {}
+    }
+    return "10:00";
+  }
+
+  function renderMarketerMeta(meta) {
+    meta = meta || {};
+    const audience = (meta.audience_summary || "").trim();
+    const timing = (meta.timing_logic || "").trim();
+    if (!audience && !timing) {
+      marketerMeta.classList.add("d-none");
+      marketerMeta.innerHTML = "";
+      return;
+    }
+    let html = "<strong>Вывод ИИ-маркетолога</strong>";
+    if (audience) html += "<div class=\"mt-1\"><span class=\"text-muted\">Аудитория:</span> " + escapeHtml(audience) + "</div>";
+    if (timing) html += "<div class=\"mt-1\"><span class=\"text-muted\">Логика времени:</span> " + escapeHtml(timing) + "</div>";
+    marketerMeta.innerHTML = html;
+    marketerMeta.classList.remove("d-none");
+  }
+
+  function renderTable(items, meta) {
+    planItems = items || [];
+    tbody.innerHTML = "";
+    planItems.forEach((item, idx) => {
+      const tr = document.createElement("tr");
+      tr.dataset.idx = String(idx);
+      const timeVal = timeFromItem(item);
+      tr.innerHTML =
+        '<td><input class="form-control form-control-sm plan-date" type="date" value="' +
+        (item.date || "") +
+        '"></td>' +
+        '<td><input class="form-control form-control-sm plan-time" type="time" value="' +
+        escapeAttr(timeVal) +
+        '" title="Время публикации — можно изменить вручную"></td>' +
+        '<td><span class="small">' +
+        escapeHtml(item.rubric_title || item.rubric_code || "") +
+        '</span><input type="hidden" class="plan-rubric" value="' +
+        escapeAttr(item.rubric_code || "") +
+        '"></td>' +
+        '<td><input class="form-control form-control-sm plan-topic" value="' +
+        escapeAttr(item.topic || "") +
+        '"></td>' +
+        '<td><input class="form-control form-control-sm plan-format" value="' +
+        escapeAttr(item.format || "") +
+        '"></td>' +
+        '<td><input class="form-control form-control-sm plan-note" value="' +
+        escapeAttr(item.note || "") +
+        '"></td>' +
+        '<td><button type="button" class="btn btn-sm btn-outline-danger plan-del" title="Убрать">×</button></td>';
+      tbody.appendChild(tr);
+    });
+    renderMarketerMeta(meta);
+    resultMeta.textContent =
+      "Тем в плане: " + planItems.length +
+      ". Дата и время заполнены ИИ-маркетологом — при необходимости поправьте вручную.";
+    resultPanel.classList.remove("d-none");
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+  function escapeAttr(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
+  }
+
+  tbody.addEventListener("click", (e) => {
+    const btn = e.target.closest(".plan-del");
+    if (!btn) return;
+    const tr = btn.closest("tr");
+    if (tr) tr.remove();
+  });
+
+  function collectItemsFromTable() {
+    const rows = [...tbody.querySelectorAll("tr")];
+    return rows.map((tr) => {
+      const dateVal = tr.querySelector(".plan-date")?.value || "";
+      let timeVal = (tr.querySelector(".plan-time")?.value || "10:00").trim();
+      if (!/^\d{1,2}:\d{2}$/.test(timeVal)) timeVal = "10:00";
+      const [hh, mm] = timeVal.split(":");
+      const hour = String(Math.max(0, Math.min(23, parseInt(hh, 10) || 10))).padStart(2, "0");
+      const minute = String(Math.max(0, Math.min(59, parseInt(mm, 10) || 0))).padStart(2, "0");
+      const scheduled = dateVal
+        ? dateVal + "T" + hour + ":" + minute + ":00+10:00"
+        : "";
+      return {
+        date: dateVal,
+        time: hour + ":" + minute,
+        scheduled_for: scheduled,
+        rubric_code: tr.querySelector(".plan-rubric")?.value || "",
+        rubric_title: "",
+        topic: tr.querySelector(".plan-topic")?.value || "",
+        format: tr.querySelector(".plan-format")?.value || "",
+        note: tr.querySelector(".plan-note")?.value || "",
+      };
+    }).filter((x) => (x.topic || "").trim().length >= 3);
+  }
+
+  async function startGenerate() {
+    showProgress(true);
+    setProgress(5, "ИИ-маркетолог изучает канал…");
+    btnGenerate.disabled = true;
+    try {
+      const res = await fetch(generateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          days: selectedDays(),
+          posts_count: parseInt(postsInput.value, 10) || null,
+          start_date: (startDateInput?.value || "").trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Не удалось запустить ИИ-маркетолога");
+      }
+      await pollJob(data.job_id);
+    } catch (err) {
+      alert(err.message || String(err));
+      showProgress(false);
+    } finally {
+      btnGenerate.disabled = false;
+    }
+  }
+
+  async function pollJob(jobId) {
+    const url = jobStatusBase.replace("JOB", jobId);
+    for (;;) {
+      const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error((data && data.error) || "Ошибка статуса задания");
+      }
+      const job = data.job;
+      setProgress(job.percent || 10, job.message || job.step || "Работаем…");
+      if (job.status === "done") {
+        lastPlanMeta = job.plan_meta || {};
+        renderTable(job.plan_items || [], job.plan_meta || {});
+        showProgress(false);
+        return;
+      }
+      if (job.status === "error") {
+        throw new Error(job.error || "ИИ-маркетолог не смог составить план");
+      }
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+  }
+
+  async function approvePlan() {
+    const items = collectItemsFromTable();
+    if (!items.length) {
+      alert("В таблице нет тем для сохранения.");
+      return;
+    }
+    const daysInput = document.querySelector('input[name="plan_days"]:checked');
+    const days = daysInput ? Number(daysInput.value) : 7;
+    if (btnApprove) btnApprove.disabled = true;
+    try {
+      const res = await fetch(approveUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          items,
+          days,
+          start_date: startDateInput?.value || "",
+          plan_meta: lastPlanMeta || {},
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Не удалось сохранить план");
+      }
+      alert(
+        "В календарь добавлено постов: " + data.created +
+        "\n\n" + (data.hint || "Материалы генерируются за сутки до публикации.")
+      );
+      window.location.href = data.queue_url || data.calendar_url || "{{ url_for('smm.calendar') }}";
+    } catch (err) {
+      alert(err.message || String(err));
+    } finally {
+      if (btnApprove) btnApprove.disabled = false;
+    }
+  }
+
+  async function sendPlanToClient() {
+    const items = collectItemsFromTable();
+    if (!items.length) {
+      alert("В таблице нет тем для согласования.");
+      return;
+    }
+    const daysInput = document.querySelector('input[name="plan_days"]:checked');
+    const days = daysInput ? Number(daysInput.value) : 7;
+    btnSendClient.disabled = true;
+    try {
+      const res = await fetch(sendClientUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          items,
+          days,
+          start_date: startDateInput?.value || "",
+          plan_meta: lastPlanMeta || {},
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Не удалось отправить план клиенту");
+      }
+      alert(
+        "План отправлен клиенту на согласование.\n\n" +
+        (data.hint || "") +
+        "\n\nСсылка скопирована в буфер (если браузер разрешил)."
+      );
+      if (data.client_url) {
+        try { await navigator.clipboard.writeText(data.client_url); } catch (e) {}
+      }
+      window.location.href = data.approvals_url || "{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}";
+    } catch (err) {
+      alert(err.message || String(err));
+    } finally {
+      btnSendClient.disabled = false;
+    }
+  }
+
+  btnGenerate?.addEventListener("click", startGenerate);
+  btnRegen?.addEventListener("click", startGenerate);
+  btnApprove?.addEventListener("click", approvePlan);
+  btnSendClient?.addEventListener("click", sendPlanToClient);
+  syncDayCards();
+})();
+</script>
+{% endblock %}

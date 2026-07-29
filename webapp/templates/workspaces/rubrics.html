@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Рубрики · {{ workspace.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h3 mb-1">Рубрики: {{ workspace.name }}</h1>
+    <p class="text-muted mb-0">{{ workspace.theme }}</p>
+  </div>
+    <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) }}">К настройкам канала</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('workspaces.list_workspaces') }}">К каналам</a>
+    <a class="btn btn-accent" href="{{ url_for('workspaces.create_rubric', workspace_id=workspace.id) }}">Добавить рубрику</a>
+  </div>
+</div>
+
+<div class="panel">
+  {% if rubrics %}
+  <table class="table align-middle mb-0">
+    <thead>
+      <tr>
+        <th>Порядок</th>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Активна</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rubrics %}
+      <tr>
+        <td>{{ r.sort_order }}</td>
+        <td><code>{{ r.code }}</code></td>
+        <td>{{ r.title }}</td>
+        <td>{{ 'да' if r.is_active else 'нет' }}</td>
+        <td class="text-end">
+          <a href="{{ url_for('workspaces.edit_rubric', workspace_id=workspace.id, rubric_id=r.id) }}">Изменить</a>
+          <form class="d-inline" method="post" action="{{ url_for('workspaces.delete_rubric', workspace_id=workspace.id, rubric_id=r.id) }}" onsubmit="return confirm('Удалить рубрику?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-link btn-sm text-danger p-0 ms-2" type="submit">Удалить</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="mb-0 text-muted">Рубрик пока нет. Добавьте первую.</p>
+  {% endif %}
+</div>
+{% endblock %}

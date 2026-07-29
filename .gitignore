@@ -1,0 +1,58 @@
+# Секреты и окружение
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Локальные файлы с ключами/токенами (не публиковать)
+Access token*
+access token*
+Api key*
+Claude Api*
+Giga Chat*
+Kie Ai VEO*
+Supabase*
+VK API*
+VK client*
+VSE GPT*
+Yandex wordstst*
+*доступ*
+*cecret*
+*secret*.txt
+
+# Тяжёлые / локальные данные
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cursor/
+.vscode/
+*.zip
+*.7z
+*.rar
+
+# Архивы и сгенерированный контент
+АРХИВ*/
+output/
+.vk-browser-profile/
+Итоговые результаты/
+Входящие материалы/
+Дизайн для VK/
+
+# База и загрузки веб-приложения
+webapp/site.db
+webapp/*.db
+webapp/uploads/
+webapp/job_status/
+webapp/static/generated/
+webapp/instance/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

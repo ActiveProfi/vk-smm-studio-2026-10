@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Статистика · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h4 mb-1">Статистика ВК</h1>
+    <p class="text-muted small mb-0">
+      Канал: <strong>{{ workspace.name if workspace else '—' }}</strong>
+    </p>
+  </div>
+  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.manager_panel') }}">К панели</a>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+<p class="text-muted small">Проверьте токен и ID группы в настройках канала или в файле <code>.env</code>.</p>
+{% elif data %}
+<div class="row g-2">
+  <div class="col-md-4">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Подписчики</div>
+      <div class="stat-value">{{ data.members_count if data.members_count is not none else '—' }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Лайки (последние посты)</div>
+      <div class="stat-value">{{ data.likes if data.likes is not none else '—' }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Просмотры (последние посты)</div>
+      <div class="stat-value">{{ data.views if data.views is not none else '—' }}</div>
+    </div>
+  </div>
+</div>
+{% if data.reach is not none %}
+<div class="panel mt-2 py-2">
+  <span class="small text-muted">Охват / просмотры (stats.get):</span>
+  <strong>{{ data.reach }}</strong>
+</div>
+{% endif %}
+{% if data.notes %}
+<ul class="mt-3 text-muted small">
+  {% for n in data.notes %}
+  <li>{{ n }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% else %}
+<p class="text-muted">Нет данных статистики.</p>
+{% endif %}
+{% endblock %}

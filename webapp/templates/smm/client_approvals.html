@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Согласование плана · {{ workspace.name }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h3 mb-1">Согласование контент-плана</h1>
+    <p class="text-muted mb-0">Канал: <strong>{{ workspace.name }}</strong> · клиент согласует план целиком, не каждый пост</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-accent" href="{{ url_for('workspaces.content_plan', workspace_id=workspace.id) }}">Собрать новый план</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) }}">Настройки</a>
+  </div>
+</div>
+
+<div class="panel mb-3" style="border-color:#e8b84a!important;background:#fffef9">
+  <h2 class="h5 mb-2">Как это работает</h2>
+  <ol class="mb-3 small">
+    <li>В контент-плане нажмите «Отправить план клиенту».</li>
+    <li>Скопируйте ссылку ниже и отправьте клиенту.</li>
+    <li>Клиент одним решением согласует или вернёт на правки весь план.</li>
+    <li>После «Согласован» нажмите «В календарь».</li>
+  </ol>
+  {% if require_client_approval %}
+  <div class="alert alert-warning py-2 small mb-3">В канале обязательно: без согласования плана клиентом в календарь не внести.</div>
+  {% endif %}
+
+  <label class="form-label fw-semibold">Ссылка для клиента</label>
+  <div class="input-group mb-2">
+    <input type="text" class="form-control" id="client-url" value="{{ client_url }}" readonly>
+    <button type="button" class="btn btn-accent" id="btn-copy-url">Копировать</button>
+    <a class="btn btn-outline-dark" href="{{ client_url }}" target="_blank" rel="noopener">Открыть</a>
+  </div>
+  <form method="post" action="{{ url_for('smm.client_approvals_regen_link', workspace_id=workspace.id) }}" class="d-inline"
+        onsubmit="return confirm('Сделать новую ссылку? Старая перестанет работать.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Обновить ссылку</button>
+  </form>
+  <span id="copy-status" class="small text-success ms-2"></span>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <div class="panel text-center py-3 mb-0">
+      <div class="fs-3 fw-bold">{{ pending_count }}</div>
+      <div class="small text-muted">планов ждут клиента</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="panel text-center py-3 mb-0">
+      <div class="fs-3 fw-bold">{{ plan_rows|length }}</div>
+      <div class="small text-muted">всего планов</div>
+    </div>
+  </div>
+</div>
+
+{% for row in plan_rows %}
+{% set p = row.plan %}
+<div class="panel mb-3">
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+    <div>
+      <h2 class="h5 mb-1">{{ p.title }}</h2>
+      <div class="small text-muted">
+        {% if p.client_status == 'pending' %}<span class="badge text-bg-warning">на согласовании</span>
+        {% elif p.client_status == 'approved' %}<span class="badge text-bg-success">согласован</span>
+        {% elif p.client_status == 'rejected' %}<span class="badge text-bg-danger">на правки</span>
+        {% endif %}
+        · тем: {{ row.topics_count }}
+        {% if p.saved_to_calendar %} · уже в календаре{% endif %}
+      </div>
+    </div>
+    <div>
+      {% if p.client_status == 'approved' and not p.saved_to_calendar %}
+      <form method="post" action="{{ url_for('smm.client_approvals_to_calendar', workspace_id=workspace.id, plan_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-accent btn-sm">Внести в календарь</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if p.client_comment %}
+  <p class="small mb-2">Комментарий клиента: {{ p.client_comment }}</p>
+  {% endif %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead>
+        <tr><th>Когда</th><th>Рубрика</th><th>Тема</th></tr>
+      </thead>
+      <tbody>
+        {% for it in row.topics %}
+        <tr>
+          <td class="small">{{ format_publish_at(it.scheduled_for) if it.scheduled_for else '—' }}</td>
+          <td class="small">{{ it.rubric_title or it.rubric_code or '—' }}</td>
+          <td>{{ it.topic }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="mt-2">
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('workspaces.content_plan_view', workspace_id=workspace.id, plan_id=p.id) }}">Открыть план целиком</a>
+  </div>
+</div>
+{% else %}
+<div class="panel">
+  <p class="text-muted mb-2">Пока нет сохранённых контент-планов по этому каналу.</p>
+  <a class="btn btn-accent" href="{{ url_for('workspaces.content_plan', workspace_id=workspace.id) }}">Открыть контент-план</a>
+</div>
+{% endfor %}
+
+<script>
+(function () {
+  const btn = document.getElementById("btn-copy-url");
+  const input = document.getElementById("client-url");
+  const status = document.getElementById("copy-status");
+  btn?.addEventListener("click", async () => {
+    if (!input) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      if (status) status.textContent = "Скопировано";
+      setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+    } catch (e) {
+      input.select();
+      document.execCommand("copy");
+    }
+  });
+})();
+</script>
+{% endblock %}

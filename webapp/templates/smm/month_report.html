@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Отчёт · {{ workspace.name }} · {{ month_title }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3 no-print">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h3 mb-1">Месячный отчёт клиенту</h1>
+    <p class="text-muted mb-0">Канал: <strong>{{ workspace.name }}</strong> · {{ month_title }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-accent"
+       href="{{ url_for('smm.month_report_excel', workspace_id=workspace.id, year=report.year, month=report.month) }}"
+       download="report.xlsx">Скачать Excel</a>
+    <a class="btn btn-accent"
+       href="{{ url_for('smm.month_report_pdf', workspace_id=workspace.id, year=report.year, month=report.month) }}"
+       download="report.pdf">Скачать PDF</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('smm.month_report', workspace_id=workspace.id, year=report.year, month=report.month, print=1) }}" target="_blank">Печать</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) }}">Настройки канала</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('smm.manager_panel', channel=workspace.id) }}">Панель</a>
+  </div>
+  <p class="small text-muted w-100 mb-0 mt-1">Файлы сохраняются в папку «Загрузки» браузера (обычно Downloads).</p>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-4 no-print" style="max-width:420px">
+  <div class="col-auto">
+    <label class="form-label small mb-0">Месяц</label>
+    <select name="month" class="form-select form-select-sm">
+      {% for m in month_choices %}
+      <option value="{{ m.value }}" {% if m.value == report.month %}selected{% endif %}>{{ m.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-0">Год</label>
+    <input type="number" name="year" class="form-control form-control-sm" value="{{ report.year }}" style="width:100px">
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-accent">Показать</button>
+  </div>
+</form>
+
+{% if print_mode %}
+<style>
+  .no-print, .app-nav { display: none !important; }
+  body { background: #fff; }
+  @media print {
+    .no-print, .app-nav { display: none !important; }
+  }
+</style>
+<script>window.addEventListener('load', () => setTimeout(() => window.print(), 400));</script>
+{% endif %}
+
+<div class="panel mb-3">
+  <h2 class="h5 mb-3">Сводка за {{ report.period_label }}</h2>
+  <div class="row g-2 text-center">
+    <div class="col-6 col-md-2"><div class="border rounded p-2"><div class="fs-4 fw-bold">{{ report.counts.total }}</div><div class="small text-muted">всего</div></div></div>
+    <div class="col-6 col-md-2"><div class="border rounded p-2"><div class="fs-4 fw-bold">{{ report.counts.planned }}</div><div class="small text-muted">в плане</div></div></div>
+    <div class="col-6 col-md-2"><div class="border rounded p-2"><div class="fs-4 fw-bold">{{ report.counts.ready }}</div><div class="small text-muted">готово</div></div></div>
+    <div class="col-6 col-md-2"><div class="border rounded p-2"><div class="fs-4 fw-bold">{{ report.counts.published }}</div><div class="small text-muted">опубликовано</div></div></div>
+    <div class="col-6 col-md-2"><div class="border rounded p-2"><div class="fs-4 fw-bold">{{ report.counts.pending_approval }}</div><div class="small text-muted">на согласовании</div></div></div>
+    <div class="col-6 col-md-2"><div class="border rounded p-2"><div class="fs-4 fw-bold">{{ report.counts.rejected }}</div><div class="small text-muted">отклонено</div></div></div>
+  </div>
+  <p class="small text-muted mt-3 mb-0">
+    Пакет: <strong>{{ report.package.title }}</strong>
+    · использовано {{ report.package.used }}{% if not report.package.unlimited %}/{{ report.package.limit }}{% else %} (без лимита){% endif %}
+  </p>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="panel h-100">
+      <h2 class="h6 mb-3">По рубрикам</h2>
+      {% if report.by_rubric %}
+      <ul class="mb-0">
+        {% for row in report.by_rubric %}
+        <li>{{ row[0] }} — <strong>{{ row[1] }}</strong></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-muted small mb-0">Пока нет постов за этот месяц.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="panel h-100">
+      <h2 class="h6 mb-3">Расходы API (оценка, ₽)</h2>
+      <p class="mb-2">Итого за месяц: <strong>{{ "%.2f"|format(report.costs.total_rub) }} ₽</strong>
+        <span class="text-muted small">(операций: {{ report.costs.events }})</span>
+      </p>
+      <p class="small text-muted mb-2">
+        Это внутренняя оценка для агентства (не счёт от провайдера).
+        Тарифы по умолчанию:
+        {% for t in report.cost_tariffs %}
+          {{ t.title }} ≈ {{ "%.0f"|format(t.unit_rub) }}₽{% if not loop.last %}; {% endif %}
+        {% endfor %}.
+      </p>
+      {% if report.cost_rows %}
+      <div class="table-responsive mb-2">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr><th>Тип</th><th>Кол-во</th><th>Сумма</th></tr>
+          </thead>
+          <tbody>
+            {% for row in report.cost_rows %}
+            <tr>
+              <td>{{ row.title or row.kind }}</td>
+              <td>{{ row.count }}</td>
+              <td>{{ "%.2f"|format(row.cost) }} ₽</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted small mb-0">Записей расходов пока нет — появятся после генерации текста, картинки, видео или плана.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if report.cost_events %}
+<div class="panel mb-3">
+  <h2 class="h6 mb-3">Журнал расходов API</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Когда</th>
+          <th>Тип</th>
+          <th>Сумма</th>
+          <th>Комментарий</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in report.cost_events[:40] %}
+        <tr>
+          <td class="small">{{ ev.when }}</td>
+          <td class="small">{{ ev.title }}</td>
+          <td class="small">{{ "%.2f"|format(ev.cost) }} ₽</td>
+          <td class="small text-muted">{{ ev.note or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if report.cost_events|length > 40 %}
+  <p class="small text-muted mt-2 mb-0">Показаны последние 40 записей из {{ report.cost_events|length }}.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2 class="h6 mb-3">Посты месяца</h2>
+  {% if report.posts %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Когда</th>
+          <th>Тема</th>
+          <th>Рубрика</th>
+          <th>Статус</th>
+          <th>Клиент</th>
+          <th class="no-print"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for post in report.posts %}
+        <tr>
+          <td class="small">{{ post.when }}</td>
+          <td>{{ post.topic }}</td>
+          <td class="small">{{ post.rubric }}</td>
+          <td class="small">{{ post.status }}</td>
+          <td class="small">{{ post.client_status_label }}</td>
+          <td class="no-print"><a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.preview', draft_id=post.id) }}">Открыть</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted mb-0">Нет постов за выбранный месяц.</p>
+  {% endif %}
+</div>
+{% endblock %}

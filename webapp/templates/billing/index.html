@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Оплата · VK SMM{% endblock %}
+{% block content %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h4 mb-1">Оплата тарифа</h1>
+    <p class="text-muted small mb-0">
+      Тариф кабинета + опционально каналы в тестовом счёте.
+    </p>
+  </div>
+</div>
+
+<div class="alert alert-warning billing-stub-banner" role="status">
+  <strong>Тестовый режим.</strong>
+  Форма оплаты — заглушка для демонстрации. Деньги с карты <u>не списываются</u>,
+  данные карты в базу <u>не сохраняются</u>. Можно вводить любые тестовые цифры
+  (например <code>4242 4242 4242 4242</code>).
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-5">
+    <div class="panel p-3 h-100">
+      <p class="small text-muted text-uppercase mb-1">Сейчас на аккаунте</p>
+      <h2 class="h5 mb-1">{{ current_plan.name }}</h2>
+      <p class="mb-1">
+        Статус: <strong>{{ plan_status_label }}</strong>
+        {% if plan_updated_at %}<span class="text-muted small">· {{ plan_updated_at }}</span>{% endif %}
+      </p>
+      <p class="mb-0 small text-muted">
+        {{ current_plan.hint }} · {{ current_plan.price }} ₽/мес
+        {% if plan_channels_note %}<br>В тесте учтены каналы: {{ plan_channels_note }}{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="panel p-3 h-100 billing-preview">
+      <p class="small text-muted text-uppercase mb-2">Черновик счёта (тест)</p>
+      <div class="d-flex justify-content-between small mb-1">
+        <span>Тариф {{ preview.plan_name }}</span>
+        <strong>{{ preview.plan_price }} ₽</strong>
+      </div>
+      <div class="d-flex justify-content-between small mb-1">
+        <span>
+          Каналы
+          {% if preview.channel_count %}
+            {{ preview.channel_count }} × {{ preview.channel_name }} ({{ preview.channel_price }} ₽)
+          {% else %}
+            не учтены
+          {% endif %}
+        </span>
+        <strong>{{ preview.channels_sum }} ₽</strong>
+      </div>
+      <hr class="my-2">
+      <div class="d-flex justify-content-between align-items-baseline">
+        <span>Итого в тесте / мес</span>
+        <strong class="billing-preview__total">{{ preview.total }} ₽</strong>
+      </div>
+      <p class="small text-muted mb-0 mt-2">Сумма обновится после отправки формы с новыми значениями.</p>
+    </div>
+  </div>
+</div>
+
+<div class="panel p-3 p-md-4">
+  <h2 class="h5 mb-3">Тестовая оплата</h2>
+  <form method="post" action="{{ url_for('billing.index') }}" class="billing-form" autocomplete="off">
+    {{ form.hidden_tag() }}
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">{{ form.plan_code.label.text }}</label>
+        {{ form.plan_code(class="form-select") }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">{{ form.channel_package.label.text }}</label>
+        {{ form.channel_package(class="form-select") }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">{{ form.channel_count.label.text }}</label>
+        {{ form.channel_count(class="form-control", min="0", max="100") }}
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">{{ form.payer_name.label.text }}</label>
+        {{ form.payer_name(class="form-control") }}
+        {% for e in form.payer_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">{{ form.card_number.label.text }}</label>
+        {{ form.card_number(class="form-control") }}
+        {% for e in form.card_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">{{ form.card_exp.label.text }}</label>
+        {{ form.card_exp(class="form-control") }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">{{ form.card_cvc.label.text }}</label>
+        {{ form.card_cvc(class="form-control") }}
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          {{ form.agree_test(class="form-check-input") }}
+          {{ form.agree_test.label(class="form-check-label") }}
+        </div>
+        {% for e in form.agree_test.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="col-12 d-flex flex-wrap gap-2">
+        {{ form.submit(class="btn btn-accent") }}
+        <a class="btn btn-outline-dark" href="{{ url_for('smm.manager_panel') }}">На панель</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<p class="small text-muted mt-3 mb-0">
+  Позже сюда можно подключить реальный платёжный шлюз (ЮKassa, CloudPayments и т.п.).
+  Сейчас достаточно показать заказчику/комиссии сценарий «выбрал тариф → оплатил».
+</p>
+
+{% endblock %}

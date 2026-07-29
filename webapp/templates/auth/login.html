@@ -1,0 +1,636 @@
+{% extends "base.html" %}
+{% block title %}VK SMM · больше прибыли с каждого клиента ВК{% endblock %}
+{% block body_nav %}{% endblock %}
+{% block main_class %}landing-page{% endblock %}
+{% block content %}
+
+{# ——— 1. Герой: рост прибыли агентства ——— #}
+<section class="landing-hero">
+  <div class="container">
+    <div class="landing-hero__top">
+      <p class="landing-brand">VK SMM · система управления SMM-агентством</p>
+      <h1 class="landing-title">
+        Зарабатывайте больше на&nbsp;каждом клиенте ВКонтакте<br>
+        без расширения команды
+      </h1>
+      <p class="landing-lead">
+        VK SMM автоматизирует подготовку контента, согласование, публикацию и&nbsp;отчёты,
+        чтобы каждый менеджер мог вести больше проектов, а&nbsp;агентство — расти без увеличения штата.
+        С тарифа Pro — ещё и подключение ВК Реклама в том же кабинете канала.
+      </p>
+      <div class="landing-cta-row">
+        <a class="btn btn-accent btn-lg" href="{{ url_for('auth.register') }}">Попробовать бесплатно</a>
+        <a class="btn btn-outline-light btn-lg" href="#agency-profit">Сколько остаётся в агентстве</a>
+      </div>
+      <p class="landing-trust">
+        Уже есть аккаунт? <a class="landing-trust__link" href="#login">Войти</a>
+      </p>
+    </div>
+
+    <div class="landing-forwhom" id="forwhom">
+      <p class="landing-forwhom__title">Для кого сервис</p>
+      <ul class="landing-forwhom__list">
+        <li>SMM-агентства</li>
+        <li>команды SMM</li>
+        <li>специалисты с 10+ клиентами</li>
+      </ul>
+    </div>
+
+    <div class="landing-result-grid">
+      <div class="landing-result">
+        <div class="landing-result__num">+прибыль</div>
+        <p class="landing-result__label">с клиента</p>
+        <p class="mb-0">Ниже себестоимость обслуживания — выше маржа на каждом договоре.</p>
+      </div>
+      <div class="landing-result">
+        <div class="landing-result__num">× выручка</div>
+        <p class="landing-result__label">на менеджера</p>
+        <p class="mb-0">Каждый менеджер приносит больше выручки без найма новых людей.</p>
+      </div>
+      <div class="landing-result">
+        <div class="landing-result__num">1 клиент</div>
+        <p class="landing-result__label">окупает сервис</p>
+        <p class="mb-0">Один новый проект практически закрывает стоимость инструмента.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ——— 2. Себестоимость → дополнительная прибыль ——— #}
+<section class="landing-section landing-section--alt" id="economics">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Рост прибыли</p>
+    <h2 class="landing-h2">
+      Каждый новый клиент приносит агентству в&nbsp;среднем 40–60&nbsp;тыс.&nbsp;₽ в&nbsp;месяц
+    </h2>
+    <p class="landing-section-lead">
+      Большинство агентств уже умеют находить клиентов. Проблема начинается потом:
+      рост портфеля упирается в себестоимость обслуживания.
+    </p>
+
+    <div class="landing-econ-pain">
+      <p class="landing-econ-pain__title">Чтобы взять ещё одного клиента, приходится:</p>
+      <ul>
+        <li>нанимать нового менеджера;</li>
+        <li>увеличивать штат дизайнеров;</li>
+        <li>тратить часы на согласования;</li>
+        <li>контролировать публикации вручную.</li>
+      </ul>
+      <p class="landing-econ-pain__out">
+        <strong>VK SMM</strong> снижает себестоимость рутины на проекте.
+        Один менеджер ведёт больше клиентов — агентство увеличивает прибыль
+        без пропорционального роста команды.
+      </p>
+    </div>
+
+    <h3 class="landing-econ-table-title">Дополнительная прибыль с каждого клиента</h3>
+    <p class="landing-section-lead landing-section-lead--tight">
+      Консервативно: у фрилансеров себестоимость падает на 20–30%,
+      у агентств с согласованиями и ручными передачами — на 25–40%.
+    </p>
+    <div class="landing-econ-table-wrap">
+      <table class="landing-econ-table landing-econ-table--wide">
+        <thead>
+          <tr>
+            <th>Категория</th>
+            <th>Средние расходы на&nbsp;1 клиента</th>
+            <th>Снижение себестоимости</th>
+            <th>Доп. прибыль с&nbsp;1 клиента</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Начинающий фрилансер</th>
+            <td>4&nbsp;000&nbsp;₽</td>
+            <td>20–25%</td>
+            <td class="is-accent">800–1&nbsp;000&nbsp;₽/мес</td>
+          </tr>
+          <tr>
+            <th scope="row">Опытный фрилансер</th>
+            <td>8&nbsp;000&nbsp;₽</td>
+            <td>25–30%</td>
+            <td class="is-accent">2&nbsp;000–2&nbsp;400&nbsp;₽/мес</td>
+          </tr>
+          <tr>
+            <th scope="row">Эксперт-фрилансер</th>
+            <td>15&nbsp;000&nbsp;₽</td>
+            <td>25–35%</td>
+            <td class="is-accent">3&nbsp;750–5&nbsp;250&nbsp;₽/мес</td>
+          </tr>
+          <tr>
+            <th scope="row">Небольшое агентство</th>
+            <td>26&nbsp;000&nbsp;₽</td>
+            <td>30–35%</td>
+            <td class="is-accent">7&nbsp;800–9&nbsp;100&nbsp;₽/мес</td>
+          </tr>
+          <tr>
+            <th scope="row">Среднее агентство</th>
+            <td>42&nbsp;000&nbsp;₽</td>
+            <td>30–40%</td>
+            <td class="is-accent">12&nbsp;600–16&nbsp;800&nbsp;₽/мес</td>
+          </tr>
+          <tr>
+            <th scope="row">Крупное агентство</th>
+            <td>82&nbsp;000&nbsp;₽</td>
+            <td>30–40%</td>
+            <td class="is-accent">24&nbsp;600–32&nbsp;800&nbsp;₽/мес</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+{# ——— 2b. Сколько денег остаётся в агентстве ——— #}
+<section class="landing-section" id="agency-profit">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Масштаб портфеля</p>
+    <h2 class="landing-h2">Сколько денег остаётся в агентстве</h2>
+    <p class="landing-section-lead">
+      Не «минус часы». Дополнительная прибыль на всём портфеле —
+      без найма новых сотрудников.
+    </p>
+
+    <div class="landing-profit-grid">
+      <div class="landing-profit-card">
+        <div class="landing-profit-card__n">10</div>
+        <div class="landing-profit-card__label">клиентов</div>
+        <div class="landing-profit-card__money">≈80–90 тыс. ₽</div>
+        <div class="landing-profit-card__hint">доп. прибыль / мес</div>
+      </div>
+      <div class="landing-profit-card">
+        <div class="landing-profit-card__n">20</div>
+        <div class="landing-profit-card__label">клиентов</div>
+        <div class="landing-profit-card__money">≈160–180 тыс. ₽</div>
+        <div class="landing-profit-card__hint">доп. прибыль / мес</div>
+      </div>
+      <div class="landing-profit-card landing-profit-card--accent">
+        <div class="landing-profit-card__n">30</div>
+        <div class="landing-profit-card__label">клиентов</div>
+        <div class="landing-profit-card__money">≈240–270 тыс. ₽</div>
+        <div class="landing-profit-card__hint">доп. прибыль / мес</div>
+      </div>
+      <div class="landing-profit-card">
+        <div class="landing-profit-card__n">50</div>
+        <div class="landing-profit-card__label">клиентов</div>
+        <div class="landing-profit-card__money">≈400–450 тыс. ₽</div>
+        <div class="landing-profit-card__hint">доп. прибыль / мес</div>
+      </div>
+    </div>
+
+    <div class="landing-econ-table-wrap landing-econ-table-wrap--compact">
+      <table class="landing-econ-table">
+        <thead>
+          <tr>
+            <th>Количество клиентов</th>
+            <th>Дополнительная прибыль в месяц*</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">10</th>
+            <td class="is-accent">≈80 тыс. ₽</td>
+          </tr>
+          <tr>
+            <th scope="row">20</th>
+            <td class="is-accent">≈160 тыс. ₽</td>
+          </tr>
+          <tr>
+            <th scope="row">30</th>
+            <td class="is-accent">≈240 тыс. ₽</td>
+          </tr>
+          <tr>
+            <th scope="row">50</th>
+            <td class="is-accent">≈400 тыс. ₽</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="landing-econ-note">
+      *Расчёт для агентства со средним чеком около 50&nbsp;тыс.&nbsp;₽ за клиента
+      и типичной структурой затрат. Фактический результат зависит от стоимости услуг,
+      процессов и состава команды.
+    </p>
+
+    <p class="landing-econ-punch">
+      Один новый клиент практически окупает сервис.
+      А рост портфеля без найма — это уже другой уровень прибыли.
+    </p>
+  </div>
+</section>
+
+{# ——— 3. Без / С сервисом ——— #}
+<section class="landing-section" id="compare">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Узнаёте себя?</p>
+    <h2 class="landing-h2">Без кабинета и с VK SMM</h2>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="landing-compare landing-compare--bad">
+          <h3 class="h6">Без кабинета</h3>
+          <ul>
+            <li>Telegram + Excel + Google Docs + папки с файлами</li>
+            <li>Клиент пишет ночью — правки за день до выхода</li>
+            <li>Менеджер вручную собирает каждый пост</li>
+            <li>Чтобы взять нового клиента — нужен новый человек</li>
+            <li>Нет отчёта → сложно продлить договор</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="landing-compare landing-compare--good">
+          <h3 class="h6">С VK SMM</h3>
+          <ul>
+            <li>Один кабинет на всех клиентов ВКонтакте</li>
+            <li>Весь план — одной ссылкой, без мессенджер-хаоса</li>
+            <li>Менеджеру не нужно собирать посты вручную</li>
+            <li>Новый проект запускается за 15 минут</li>
+            <li>Месячный отчёт помогает продлевать договоры</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ——— 3. Мечта: через год ——— #}
+<section class="landing-section landing-section--dark" id="year">
+  <div class="container">
+    <p class="landing-eyebrow">Мечта владельца</p>
+    <h2 class="landing-h2 landing-h2--light">Через год агентство выглядит так</h2>
+    <div class="landing-year">
+      <div class="landing-year__col landing-year__col--bad">
+        <h3>Без VK SMM</h3>
+        <ul>
+          <li><b>15</b> клиентов</li>
+          <li><b>4</b> менеджера</li>
+          <li>Telegram</li>
+          <li>Excel</li>
+          <li>вечные правки</li>
+        </ul>
+      </div>
+      <div class="landing-year__arrow" aria-hidden="true">→</div>
+      <div class="landing-year__col landing-year__col--good">
+        <h3>С VK SMM</h3>
+        <ul>
+          <li><b>30</b> клиентов</li>
+          <li><b>те же 4</b> менеджера</li>
+          <li>один кабинет</li>
+          <li>менеджеры не собирают посты вручную</li>
+          <li>публикация по расписанию</li>
+        </ul>
+      </div>
+    </div>
+    <p class="landing-year__note">Вдвое больше проектов. Та же команда. Выше маржа.</p>
+  </div>
+</section>
+
+{# ——— 4. Панель в масштабе ——— #}
+<section class="landing-product-bleed" id="product">
+  <div class="container">
+    <p class="landing-eyebrow">Как выглядит кабинет</p>
+    <h2 class="landing-h2 landing-h2--light">Рабочий стол агентства. Не планировщик постов.</h2>
+  </div>
+
+  <div class="landing-shot">
+    <div class="landing-shot__frame" aria-hidden="true">
+      <div class="landing-shot__chrome">
+        <span></span><span></span><span></span>
+        <strong>VK SMM · Панель управления</strong>
+        <em>все клиенты</em>
+      </div>
+
+      <div class="landing-shot__body">
+        <div class="landing-shot__header">
+          <div>
+            <div class="landing-shot__kicker">Кабинет агентства</div>
+            <div class="landing-shot__title">Панель управления</div>
+          </div>
+          <div class="landing-shot__actions">
+            <span class="landing-shot__btn landing-shot__btn--accent">Новый клиент</span>
+            <span class="landing-shot__btn">Контроль публикаций</span>
+          </div>
+        </div>
+
+        <div class="landing-shot__stats">
+          <div><b>34</b><small>клиента</small></div>
+          <div><b>1&nbsp;260</b><small>публикаций</small></div>
+          <div class="is-warn"><b>18</b><small>ждут согласования</small></div>
+          <div class="is-warn"><b>47</b><small>готовятся</small></div>
+          <div class="is-danger"><b>3</b><small>просрочено</small></div>
+          <div><b>8</b><small>менеджеров</small></div>
+        </div>
+
+        <div class="landing-shot__list">
+          <div class="landing-shot__row is-warn">
+            <div>
+              <strong>Клиника «Альфа»</strong>
+              <span>медицина · пакет Бизнес 9/25</span>
+            </div>
+            <div class="landing-shot__badges">
+              <i class="warn">ждёт согласования</i>
+              <u>Открыть</u>
+            </div>
+            <div class="landing-shot__chips">
+              <span><b>8</b> в плане</span>
+              <span><b>3</b> готовятся</span>
+              <span><b>4</b> готовы</span>
+              <span><b>11</b> уже в ВК</span>
+            </div>
+          </div>
+          <div class="landing-shot__row">
+            <div>
+              <strong>Автосервис Nord</strong>
+              <span>услуги · пакет Премиум 14/45</span>
+            </div>
+            <div class="landing-shot__badges">
+              <i class="ok">идёт по расписанию</i>
+              <u>Открыть</u>
+            </div>
+            <div class="landing-shot__chips">
+              <span><b>5</b> в плане</span>
+              <span><b>0</b> застряло</span>
+              <span><b>6</b> готовы</span>
+              <span><b>19</b> уже в ВК</span>
+            </div>
+          </div>
+          <div class="landing-shot__row is-danger">
+            <div>
+              <strong>Школа английского</strong>
+              <span>образование · пакет Старт 12/12</span>
+            </div>
+            <div class="landing-shot__badges">
+              <i class="danger">просрочено 2</i>
+              <u>Открыть</u>
+            </div>
+            <div class="landing-shot__chips">
+              <span><b>10</b> в плане</span>
+              <span><b>2</b> нужно срочно</span>
+              <span><b>1</b> готовы</span>
+              <span><b>7</b> уже в ВК</span>
+            </div>
+          </div>
+          <div class="landing-shot__row">
+            <div>
+              <strong>Фитнес LOFT</strong>
+              <span>спорт · пакет Бизнес 6/25</span>
+            </div>
+            <div class="landing-shot__badges">
+              <i class="ok">всё под контролем</i>
+              <u>Открыть</u>
+            </div>
+            <div class="landing-shot__chips">
+              <span><b>4</b> в плане</span>
+              <span><b>0</b> застряло</span>
+              <span><b>5</b> готовы</span>
+              <span><b>22</b> уже в ВК</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="landing-proof">
+      <div><b>34</b><span>клиента на одном экране</span></div>
+      <div><b>1&nbsp;260</b><span>публикаций под контролем</span></div>
+      <div><b>18</b><span>ждут ответа клиента</span></div>
+      <div><b>3</b><span>просрочки — видно сразу</span></div>
+    </div>
+  </div>
+</section>
+
+{# ——— 5. Что меняется в агентстве (деньги сверху) ——— #}
+<section class="landing-section">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Что меняется</p>
+    <h2 class="landing-h2">Что вы покупаете на самом деле</h2>
+    <div class="landing-outcome-grid">
+      <article class="landing-outcome">
+        <h3>Больше клиентов на того же менеджера</h3>
+        <p>Не расширяя штат. Новые проекты — это выручка, а не найм.</p>
+      </article>
+      <article class="landing-outcome">
+        <h3>Продлевать договор проще</h3>
+        <p>Каждый месяц есть отчёт. Разговор с клиентом — на цифрах, не «на доверии».</p>
+      </article>
+      <article class="landing-outcome">
+        <h3>Все клиенты в одном кабинете</h3>
+        <p>Не десятки чатов и таблиц. Один экран — кто горит, кто ждёт, кто уже в ВК.</p>
+      </article>
+      <article class="landing-outcome">
+        <h3>Одна ссылка вместо сотни сообщений</h3>
+        <p>Клиент утверждает весь план. Менеджер перестаёт жить в Telegram.</p>
+      </article>
+      <article class="landing-outcome">
+        <h3>Публикации не забываются</h3>
+        <p>Готовые материалы уходят в ВК по расписанию — даже если менеджер заболел.</p>
+      </article>
+      <article class="landing-outcome">
+        <h3>Новый проект — за 15 минут</h3>
+        <p>Завели клиента, запустили план, отправили на согласование. Дальше кабинет ведёт процесс.</p>
+      </article>
+      <article class="landing-outcome">
+        <h3>Контент и реклама ВК — в одном сервисе</h3>
+        <p>К каналу клиента подключается кабинет ВК Реклама: кампании и расходы рядом с постами, а не в отдельной таблице.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+{# ——— 5b. ВК Реклама как часть продукта ——— #}
+<section class="landing-section landing-section--dark" id="vk-ads">
+  <div class="container">
+    <p class="landing-eyebrow">Модуль в сервисе</p>
+    <h2 class="landing-h2 landing-h2--light">Подключение ВК Реклама прямо в кабинете канала</h2>
+    <p class="landing-lead landing-lead--on-dark">
+      Не отдельный сервис и не Excel с кабинетами. В настройках канала клиента —
+      блок «ВК Реклама»: привязали рекламный кабинет ВКонтакте и видите рекламу
+      рядом с контент-планом, публикациями и отчётом.
+    </p>
+    <ul class="landing-ads-list">
+      <li>Подключение рекламного кабинета ВК к конкретному клиенту</li>
+      <li>Сводка кампаний и расходов в том же рабочем пространстве</li>
+      <li>Меньше переключений между «контент» и «реклама»</li>
+      <li>В отчёте клиенту — и посты, и реклама одним файлом</li>
+    </ul>
+    <p class="landing-ads-note">
+      <span class="landing-ads-note__badge">Скоро</span>
+      Модуль уже заложен в продукт и тариф <strong>Pro</strong>.
+      Сейчас в настройках канала — блок подключения с пометкой «Скоро».
+    </p>
+    <a class="btn btn-accent btn-lg" href="#pricing">Смотреть тариф Pro</a>
+  </div>
+</section>
+
+{# ——— 6. Что перестаёт делать менеджер ——— #}
+<section class="landing-section landing-section--alt" id="manager">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Освобождение команды</p>
+    <h2 class="landing-h2">Что перестаёт делать ваш менеджер</h2>
+    <ul class="landing-why">
+      <li>искать идеи для постов</li>
+      <li>собирать контент вручную</li>
+      <li>делать картинки «на коленке»</li>
+      <li>копировать материалы в ВК</li>
+      <li>догонять клиента в мессенджере</li>
+      <li>считать отчёты в конце месяца</li>
+    </ul>
+    <p class="landing-manager-bottom">Всё это делает VK SMM. Менеджер занимается клиентами и продажами.</p>
+  </div>
+</section>
+
+{# ——— 7. Боль жёстче ——— #}
+<section class="landing-section">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Почему больно расти</p>
+    <h2 class="landing-h2">Пока вы нанимаете — конкурент уже масштабируется</h2>
+    <div class="landing-pain-grid">
+      <div class="landing-pain">
+        <p class="landing-pain__line">Пока менеджер собирает посты для 8 клиентов — конкурент уже ведёт 20.</p>
+      </div>
+      <div class="landing-pain">
+        <p class="landing-pain__line">Чтобы взять 10-го клиента, приходится нанимать человека. Маржа падает.</p>
+      </div>
+      <div class="landing-pain">
+        <p class="landing-pain__line">Клиент пишет в 23:40. Правки за день до выхода. Команда снова тушит пожар.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ——— 8. Почему именно вы ——— #}
+<section class="landing-section landing-section--alt">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Почему переходят</p>
+    <h2 class="landing-h2">Почему агентства выбирают VK SMM</h2>
+    <ul class="landing-why">
+      <li>Не нужно учить сотрудников сложному инструменту</li>
+      <li>Клиенты согласовывают одной ссылкой</li>
+      <li>Ничего не забывается — просрочки видны сразу</li>
+      <li>Каждый клиент ведётся в своём стиле</li>
+      <li>Контент и ВК Реклама — в одном кабинете канала</li>
+      <li>Отчёт помогает продлевать договор</li>
+      <li>Все проекты ВК — в одном месте</li>
+    </ul>
+    <div class="mt-4">
+      <a class="btn btn-accent btn-lg" href="{{ url_for('auth.register') }}">Запустить первое агентское пространство</a>
+    </div>
+  </div>
+</section>
+
+{# ——— 9. Как запускается ——— #}
+<section class="landing-section">
+  <div class="container landing-steps-wrap">
+    <p class="landing-eyebrow landing-eyebrow--dark">Старт</p>
+    <h2 class="landing-h2">Новый проект — за 15 минут</h2>
+    <ol class="landing-steps">
+      <li><strong>Заводите клиента</strong> — тема, стиль, пакет услуг.</li>
+      <li><strong>Собирается план</strong> — темы и даты на период.</li>
+      <li><strong>Клиент жмёт «согласовать»</strong> — одной ссылкой, без Telegram.</li>
+      <li><strong>Кабинет ведёт дальше</strong> — подготовка, публикация, отчёт.</li>
+    </ol>
+  </div>
+</section>
+
+{# ——— 10. Тарифы ——— #}
+<section class="landing-section landing-section--alt" id="pricing">
+  <div class="container">
+    <p class="landing-eyebrow landing-eyebrow--dark">Тарифы</p>
+    <h2 class="landing-h2">Выберите возможности кабинета. Платите только за клиентов, которых ведёте сейчас.</h2>
+    <p class="landing-section-lead">
+      Тариф открывает функции. Каждый канал ВК — отдельная оплата по пакету Старт, Бизнес или Премиум.
+      Добавили клиента — доплатили. Отключили — перестали платить.
+    </p>
+
+    <div class="landing-price-grid">
+      <article class="landing-price">
+        <p class="landing-price__name">Free</p>
+        <p class="landing-price__sum">0&nbsp;₽</p>
+        <p class="landing-price__period">14 дней полного доступа</p>
+        <p class="landing-price__desc">Весь кабинет без урезаний — чтобы пройти цикл от настройки до публикации.</p>
+      </article>
+      <article class="landing-price">
+        <p class="landing-price__name">Стандарт</p>
+        <p class="landing-price__sum">1&nbsp;490&nbsp;₽</p>
+        <p class="landing-price__period">в месяц + каналы</p>
+        <p class="landing-price__desc">Ведение контента ВК: план, генерация, согласование, публикация и отчёт.</p>
+      </article>
+      <article class="landing-price landing-price--accent">
+        <p class="landing-price__badge">Для роста</p>
+        <p class="landing-price__name">Pro</p>
+        <p class="landing-price__sum">3&nbsp;900&nbsp;₽</p>
+        <p class="landing-price__period">в месяц + каналы</p>
+        <p class="landing-price__desc">Всё из Стандарта + <strong>подключение ВК Реклама в настройках канала</strong>: контент и реклама клиента в одном сервисе.</p>
+      </article>
+      <article class="landing-price">
+        <p class="landing-price__name">Agency</p>
+        <p class="landing-price__sum">9&nbsp;900&nbsp;₽</p>
+        <p class="landing-price__period">в месяц + каналы</p>
+        <p class="landing-price__desc">Для команды: несколько менеджеров, сводка по портфелю и приоритетная поддержка.</p>
+      </article>
+    </div>
+
+    <div class="landing-price-channels">
+      <p class="landing-price-channels__title">Оплата за канал клиента</p>
+      <div class="landing-price-channels__row">
+        <span><strong>Старт</strong> · 12 постов · 690&nbsp;₽</span>
+        <span><strong>Бизнес</strong> · 25 постов · 1&nbsp;290&nbsp;₽</span>
+        <span><strong>Премиум</strong> · 45 постов · 2&nbsp;290&nbsp;₽</span>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <a class="btn btn-accent btn-lg" href="{{ url_for('auth.register') }}">Начать 14 дней бесплатно</a>
+    </div>
+  </div>
+</section>
+
+{# ——— 11. Вход ——— #}
+<section class="landing-section landing-section--alt" id="login">
+  <div class="container">
+    <div class="landing-login-wrap">
+      <div>
+        <h2 class="landing-h2 mb-2">Готовы зарабатывать больше на тех же людях?</h2>
+        <p class="landing-section-lead mb-0">
+          Начните с одного проекта. Дальше — рост портфеля без пропорционального роста штата.
+        </p>
+        <div class="landing-cta-row mt-3">
+          <a class="btn btn-accent btn-lg" href="{{ url_for('auth.register') }}">Создать рабочее пространство</a>
+        </div>
+      </div>
+      <div class="landing-hero__form panel landing-hero__form--compact">
+        {% if current_user.is_authenticated %}
+        <h3 class="h6 mb-3">Вы уже в системе</h3>
+        <p class="small text-muted mb-3">Откройте кабинет и продолжите работу с клиентами.</p>
+        <a class="btn btn-outline-dark w-100" href="{{ url_for('smm.manager_panel') }}">Открыть кабинет</a>
+        {% else %}
+        <h3 class="h6 mb-3">Вход</h3>
+        <form method="post" action="{{ url_for('auth.login') }}">
+          {{ form.hidden_tag() }}
+          <div class="mb-2">
+            {{ form.username.label(class="form-label small mb-1") }}
+            {{ form.username(class="form-control") }}
+          </div>
+          <div class="mb-3">
+            {{ form.password.label(class="form-label small mb-1") }}
+            {{ form.password(class="form-control") }}
+          </div>
+          {{ form.submit(class="btn btn-outline-dark w-100") }}
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="landing-footer-cta">
+  <div class="container text-center">
+    <p class="landing-footer-cta__title mb-2">Дополнительная прибыль с каждого клиента — без расширения штата</p>
+    <p class="text-muted mb-3">Каждый менеджер приносит больше выручки. Агентство растёт на той же команде.</p>
+    <a class="btn btn-accent btn-lg" href="{{ url_for('auth.register') }}">Попробовать бесплатно</a>
+  </div>
+</section>
+
+{% endblock %}

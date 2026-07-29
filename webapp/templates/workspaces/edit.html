@@ -1,0 +1,919 @@
+{% extends "base.html" %}
+{% block title %}{% if workspace %}Канал · {{ workspace.name }}{% else %}Новый канал{% endif %}{% endblock %}
+{% block content %}
+<p class="lk-kicker mb-1">Кабинет агентства</p>
+<h1 class="h3 mb-3">{% if workspace %}Редактировать канал{% else %}Новый канал{% endif %}</h1>
+<div class="panel" style="max-width:760px">
+  <form method="post" id="workspace-form">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">{{ form.name.label(class="form-label") }}{{ form.name(class="form-control", id="name") }}</div>
+    <div class="mb-3">{{ form.theme.label(class="form-label") }}{{ form.theme(class="form-control", id="theme") }}
+      <div class="form-text">Название и тематика — отправная точка для кнопок «ИИ генерация» ниже.</div>
+    </div>
+    <div class="mb-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+        {{ form.description.label(class="form-label mb-0") }}
+        <button type="button" class="btn btn-sm btn-outline-warning ai-field-generate" data-field="description">ИИ генерация</button>
+      </div>
+      {{ form.description(class="form-control", id="description") }}
+      <span class="small text-muted ai-field-status" data-field="description"></span>
+    </div>
+    <div class="mb-3">{{ form.brand_site.label(class="form-label") }}{{ form.brand_site(class="form-control", id="brand_site") }}
+      <div class="form-text">Подставляется в генерацию по умолчанию. На странице генерации можно изменить или загрузить файл логотипа.</div>
+    </div>
+    <div class="mb-3">{{ form.search_hint.label(class="form-label") }}{{ form.search_hint(class="form-control") }}
+      <div class="form-text">Добавляется к теме при веб-поиске материалов.</div>
+    </div>
+    <div class="mb-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+        {{ form.knowledge_text.label(class="form-label mb-0") }}
+        <button type="button" class="btn btn-sm btn-outline-warning ai-field-generate" data-field="knowledge_text">ИИ генерация</button>
+      </div>
+      {{ form.knowledge_text(class="form-control", id="knowledge_text") }}
+      <div class="form-text">Только для этого канала: факты, правила, термины. Можно написать вручную и улучшить кнопкой ИИ.</div>
+      <span class="small text-muted ai-field-status" data-field="knowledge_text"></span>
+    </div>
+
+    <hr class="my-4">
+    <h2 class="h5 mb-2">Визуальный стиль канала</h2>
+    <p class="text-muted small mb-3">
+      Задаёт постоянный стиль картинок и видео для <strong>этого</strong> канала.
+      При генерации учитывается вместе с рубрикой: рубрика — формат поста, здесь — палитра, шрифты, композиция.
+    </p>
+
+    {% if workspace %}
+    <div class="mb-3">
+      <label class="form-label">Референсы (картинки-примеры стиля)</label>
+      <div class="form-text mb-2">Сначала загрузите до 8 изображений (png, jpg, webp, gif). ИИ учтёт их при генерации промпта стиля и при создании визуалов.</div>
+      <div class="d-flex flex-wrap gap-2 mb-2" id="visual-refs-list">
+        {% for ref in visual_refs %}
+        <div class="visual-ref-card border rounded p-1 position-relative" data-ref-id="{{ ref.id }}">
+          <img src="{{ ref.url }}" alt="{{ ref.name }}" class="rounded" style="width:96px;height:96px;object-fit:cover;">
+          <button type="button" class="btn btn-sm btn-outline-danger visual-ref-delete mt-1 w-100" data-ref-id="{{ ref.id }}">Удалить</button>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <input type="file" id="reference_uploads" accept="image/png,image/jpeg,image/webp,image/gif" multiple class="form-control" style="max-width:360px">
+        <button type="button" class="btn btn-outline-dark" id="btn-upload-refs">Загрузить референсы</button>
+        <span id="refs-upload-status" class="small text-muted"></span>
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info py-2 small mb-3">
+      Референсы можно загрузить после сохранения канала — откройте его редактирование.
+    </div>
+    {% endif %}
+
+    <div class="mb-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+        {{ form.visual_style_prompt.label(class="form-label mb-0") }}
+        <button type="button" class="btn btn-sm btn-outline-warning ai-field-generate" data-field="visual_style_prompt">ИИ генерация</button>
+      </div>
+      {{ form.visual_style_prompt(class="form-control", id="visual_style_prompt") }}
+      <div class="form-text">Промпт для ИИ: как должны выглядеть визуалы. Если есть референсы — кнопка «ИИ генерация» полностью пересобирает промпт по ним (старая палитра не сохраняется). После изменений сохраните канал.</div>
+      <span class="small text-muted ai-field-status" data-field="visual_style_prompt"></span>
+    </div>
+
+    {% if workspace %}
+    <div class="mb-3 border rounded p-3 bg-light" id="style-preview-block">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <label class="form-label mb-0">Пример картинки для утверждения стиля</label>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-sm btn-accent" id="btn-style-preview-generate">
+            {% if style_preview_url %}Перегенерировать{% else %}Сгенерировать пример{% endif %}
+          </button>
+        </div>
+      </div>
+      <p class="text-muted small mb-2">
+        По текущему промпту стиля создаётся тестовая картинка. Если не подходит — нажмите «Перегенерировать».
+        После утверждения сохраните канал.
+      </p>
+      <div id="style-preview-progress" class="small text-muted mb-2" style="display:none">Идёт генерация примера… 1–2 минуты</div>
+      <div id="style-preview-error" class="alert alert-danger py-2 small mb-2" style="display:none"></div>
+      <div id="style-preview-wrap" class="{% if not style_preview_url %}d-none{% endif %}">
+        <a href="{{ style_preview_url or '#' }}" target="_blank" rel="noopener" id="style-preview-link">
+          <img src="{{ style_preview_url or '' }}" alt="Пример стиля канала" id="style-preview-img" class="img-fluid rounded border" style="max-height:420px;max-width:100%;">
+        </a>
+      </div>
+      <div id="style-preview-empty" class="text-muted small {% if style_preview_url %}d-none{% endif %}">
+        Пример ещё не создан. Заполните промпт стиля и нажмите «Сгенерировать пример».
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info py-2 small mb-3">
+      Пример картинки для утверждения стиля можно создать после сохранения канала.
+    </div>
+    {% endif %}
+
+    {% if workspace %}
+    <hr class="my-4">
+    <h2 class="h5 mb-2">Рубрики канала</h2>
+    <p class="text-muted small mb-3">
+      Рубрика задаёт формат поста (экспертный, разбор, кейс и т.д.) и выбирается при генерации.
+      Сейчас в канале: <strong>{{ rubric_count }}</strong>
+      {% if rubric_count == 0 %}— без рубрик генерация не запустится.{% else %}шт.{% endif %}
+    </p>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <a class="btn btn-accent" href="{{ url_for('workspaces.create_rubric', workspace_id=workspace.id) }}">Добавить рубрику</a>
+      <a class="btn btn-outline-dark" href="{{ url_for('workspaces.rubrics', workspace_id=workspace.id) }}">Все рубрики</a>
+    </div>
+    {% endif %}
+
+    <hr class="my-4">
+    <h2 class="h5 mb-2">Пакет услуг</h2>
+    <p class="text-muted small mb-3">
+      Нажмите на карточку пакета, затем «Сохранить канал» внизу страницы.
+      Лимит считается по постам в календаре / готовым / опубликованным за текущий месяц.
+    </p>
+
+    <div class="row g-2 mb-3" id="package-cards">
+      <div class="col-md-4">
+        <button type="button" class="package-card border rounded p-3 h-100 w-100 text-start bg-white"
+                data-package="start" style="cursor:pointer">
+          <div class="fw-semibold">Старт</div>
+          <div class="fs-4">12</div>
+          <div class="small text-muted">постов в месяц</div>
+        </button>
+      </div>
+      <div class="col-md-4">
+        <button type="button" class="package-card border rounded p-3 h-100 w-100 text-start bg-white"
+                data-package="business" style="cursor:pointer">
+          <div class="fw-semibold">Бизнес</div>
+          <div class="fs-4">25</div>
+          <div class="small text-muted">постов в месяц</div>
+        </button>
+      </div>
+      <div class="col-md-4">
+        <button type="button" class="package-card border rounded p-3 h-100 w-100 text-start bg-white"
+                data-package="premium" style="cursor:pointer">
+          <div class="fw-semibold">Премиум</div>
+          <div class="fs-4">45</div>
+          <div class="small text-muted">постов + упор на видео</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      {{ form.package_code.label(class="form-label") }}
+      {{ form.package_code(class="form-select", id="package_code") }}
+      {% for err in form.package_code.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+    </div>
+    <div class="mb-3" id="custom-limit-wrap">
+      {{ form.package_posts_limit.label(class="form-label") }}
+      {{ form.package_posts_limit(class="form-control", style="max-width:160px", id="package_posts_limit") }}
+      <div class="form-text">Нужен только если выбран «Свой лимит». 0 = без лимита.</div>
+      {% for err in form.package_posts_limit.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      <button type="submit" class="btn btn-accent">Сохранить пакет</button>
+      <span class="small text-muted ms-2" id="package-pick-hint"></span>
+    </div>
+    {% if workspace and package_status %}
+    <div class="border rounded p-3 mb-3 {% if package_status.blocked %}border-danger{% else %}border-success{% endif %}" id="package-status-box"
+         data-used="{{ package_status.used }}">
+      <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+        <div>
+          <strong id="package-status-title">{{ package_status.title }}</strong>
+          <div class="small text-muted">Период: {{ package_status.period_label }}</div>
+        </div>
+        <div class="text-end">
+          {% if package_status.unlimited %}
+          <span class="fs-5" id="package-status-numbers">без лимита</span>
+          {% else %}
+          <span class="fs-5" id="package-status-numbers">{{ package_status.used }}/{{ package_status.limit }}</span>
+          <div class="small text-muted" id="package-status-left">осталось {{ package_status.left }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% if not package_status.unlimited %}
+      <div class="progress" style="height:10px">
+        <div class="progress-bar {% if package_status.blocked %}bg-danger{% elif package_status.percent >= 80 %}bg-warning{% else %}bg-success{% endif %}"
+             id="package-status-bar"
+             style="width: {{ package_status.percent }}%"></div>
+      </div>
+      {% else %}
+      <div class="progress d-none" style="height:10px">
+        <div class="progress-bar bg-success" id="package-status-bar" style="width: 0%"></div>
+      </div>
+      {% endif %}
+      {% if package_status.blocked %}
+      <div class="text-danger small mt-2 mb-0" id="package-status-blocked">Лимит исчерпан: новые посты и темы плана не добавить, пока не смените пакет или не начнётся новый месяц.</div>
+      {% else %}
+      <div class="text-danger small mt-2 mb-0 d-none" id="package-status-blocked"></div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <hr class="my-4">
+    <h2 class="h5 mb-2">Публикация и согласование</h2>
+    <div class="form-check mb-2">{{ form.require_client_approval(class="form-check-input") }}{{ form.require_client_approval.label(class="form-check-label") }}</div>
+    <div class="form-check mb-2">{{ form.auto_publish_enabled(class="form-check-input") }}{{ form.auto_publish_enabled.label(class="form-check-label") }}</div>
+    <p class="small text-muted mb-3">
+      Пока кабинет запущен, система примерно раз в минуту сама проверяет посты со статусом
+      «готов к публикации» и отправляет в ВК те, у которых время из календаря уже наступило.
+      Нужны: галочка выше, VK-токен/группа, пост в статусе ready.
+    </p>
+    {% if workspace and auto_publish_info %}
+    <div class="border rounded p-3 mb-3 {% if auto_publish_info.enabled %}border-success{% else %}border-secondary{% endif %}">
+      <div class="fw-semibold mb-1">
+        {% if auto_publish_info.enabled %}Автопубликация включена{% else %}Автопубликация выключена{% endif %}
+      </div>
+      <ul class="small mb-2 ps-3">
+        <li>Можно опубликовать сейчас: <strong>{{ auto_publish_info.due_now }}</strong></li>
+        <li>Ждут своего времени: <strong>{{ auto_publish_info.waiting }}</strong>
+          {% if auto_publish_info.next_at %}(ближайший: {{ auto_publish_info.next_at }}){% endif %}
+        </li>
+        {% if auto_publish_info.blocked %}
+        <li class="text-warning">Заблокированы (например, план не согласован): {{ auto_publish_info.blocked }}</li>
+        {% endif %}
+      </ul>
+      {% if auto_publish_info.last_at %}
+      <div class="small text-muted mb-2">
+        Последняя проверка: {{ auto_publish_info.last_at }}
+        · проверено {{ auto_publish_info.last_checked }}
+        · опубликовано {{ auto_publish_info.last_published }}
+        {% if auto_publish_info.last_error %}· <span class="text-danger">{{ auto_publish_info.last_error }}</span>{% endif %}
+      </div>
+      {% else %}
+      <div class="small text-muted mb-2">Фоновая проверка ещё не успела отработать — подождите около минуты после включения.</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('smm.auto_publish_now', workspace_id=workspace.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) }}">
+        <button type="submit" class="btn btn-outline-dark btn-sm">Проверить и опубликовать сейчас</button>
+      </form>
+    </div>
+    {% endif %}
+    {% if workspace and client_approve_url %}
+    <div class="border rounded p-3 mb-3" style="background:#fffef9;border-color:#e8b84a!important">
+      <h3 class="h6 mb-2">Согласование контент-плана</h3>
+      <p class="small text-muted mb-2">Клиент согласует план целиком. Отдельная страница менеджера со ссылкой и статусами.</p>
+      <div class="d-flex flex-wrap gap-2 mb-2">
+        <a class="btn btn-accent btn-sm" href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Открыть согласование</a>
+        <button type="button" class="btn btn-outline-dark btn-sm" id="btn-copy-client-url">Копировать ссылку клиенту</button>
+      </div>
+      <input type="text" class="form-control form-control-sm" id="client-approve-url" value="{{ client_approve_url }}" readonly>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <a class="btn btn-outline-dark btn-sm" href="{{ url_for('smm.month_report', workspace_id=workspace.id) }}">Месячный отчёт</a>
+    </div>
+    {% endif %}
+
+    <hr class="my-4">
+    <h2 class="h5 mb-2">Подключение ВКонтакте</h2>
+    <p class="text-muted small mb-3">Нужны, чтобы публиковать посты из предпросмотра прямо в группу.</p>
+
+    {% if vk_status and vk_status.ready %}
+      <div class="alert alert-success py-2 small">
+        Данные для публикации уже есть
+        {% if vk_status.has_channel_token %}в этом канале{% elif vk_status.has_env_fallback %}в файле .env проекта{% endif %}.
+        Нажмите «Проверить подключение», чтобы убедиться.
+      </div>
+    {% else %}
+      <div class="alert alert-warning py-2 small">
+        Токен или ID группы ещё не заданы. Заполните поля ниже или пропишите их в <code>.env</code>.
+      </div>
+    {% endif %}
+
+    <div class="vk-howto mb-3">
+      <details>
+        <summary><strong>Как подключить сообщество (актуально на 2026)</strong></summary>
+        <p class="small mt-2 mb-2"><strong>Способ 1 — ключ сообщества</strong> (проще всего, без dev.vk.com):</p>
+        <ol class="small mb-3">
+          <li>Откройте ваше сообщество ВК.</li>
+          <li><strong>Управление</strong> → <strong>Дополнительно</strong> → <strong>Работа с API</strong>.</li>
+          <li>Вкладка <strong>Ключи доступа</strong> → <strong>Создать ключ</strong>.</li>
+          <li>Отметьте права: <strong>Управление сообществом</strong>, <strong>Фото</strong>, <strong>Стена</strong>, <strong>Видео</strong> (что доступно в списке).</li>
+          <li>Подтвердите в приложении ВК или по СМС → <strong>Показать</strong> → скопируйте ключ.</li>
+          <li>Вставьте ключ в поле «VK API токен» ниже, ID группы — в соседнее поле.</li>
+        </ol>
+        <p class="small mb-2"><strong>Способ 2 — токен пользователя</strong> (если посты с картинкой/видео не публикуются):</p>
+        <ol class="small mb-2">
+          <li>Старый способ через oauth.vk.com больше не актуален.</li>
+          <li>Сейчас токен пользователя получают через <a href="https://id.vk.com/about/business/go" target="_blank" rel="noopener">VK ID для бизнеса</a> (OAuth 2.1) или сервис вроде <a href="https://vkhost.github.io/" target="_blank" rel="noopener">vkhost.github.io</a> (приложение «VK Admin», права wall, photos, video, groups, offline).</li>
+          <li>Токен нужно получить <strong>на этом же компьютере</strong>, где работает кабинет.</li>
+        </ol>
+        <p class="small text-muted mb-0">
+          Официальная справка: <a href="https://dev.vk.com/ru/api/access-token/community-token" target="_blank" rel="noopener">ключ сообщества</a>,
+          <a href="https://dev.vk.com/ru/api/access-token/user-token" target="_blank" rel="noopener">ключ пользователя</a>.
+          Токен не публикуйте в чатах и постах.
+        </p>
+      </details>
+    </div>
+
+    <div class="mb-3">
+      {{ form.vk_token.label(class="form-label") }}
+      {{ form.vk_token(class="form-control") }}
+      <div class="form-text">
+        {% if workspace and workspace.vk_token %}
+          Токен уже сохранён в канале. Введите новый, только если хотите заменить.
+        {% else %}
+          Если поле пустое — при публикации возьмём токен из <code>.env</code> (если он там есть).
+        {% endif %}
+      </div>
+    </div>
+    <div class="mb-3">
+      {{ form.vk_group_id.label(class="form-label") }}
+      {{ form.vk_group_id(class="form-control") }}
+    </div>
+
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+      <button type="button" class="btn btn-outline-dark" id="btn-test-vk">Проверить подключение</button>
+      <span id="vk-test-status" class="small"></span>
+    </div>
+    <div id="vk-test-result" class="mb-3" style="display:none"></div>
+
+    <hr class="my-4">
+    <div class="border rounded p-3 mb-3 vk-ads-stub" style="background:#f7f5f0;border-color:var(--line)!important;opacity:0.95">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+        <h2 class="h5 mb-0">Подключение ВК Реклама</h2>
+        <span class="badge text-bg-warning">Скоро</span>
+      </div>
+      <p class="small text-muted mb-3">
+        Здесь появится связка рекламного кабинета ВКонтакте с этим каналом:
+        кампании, расходы и статусы объявлений — рядом с контентом клиента.
+        Доступно с тарифа <strong>Pro</strong>.
+      </p>
+      <div class="mb-3">
+        <label class="form-label">ID кабинета ВК Реклама</label>
+        <input type="text" class="form-control" placeholder="Например, 12345678" disabled>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Токен рекламного API</label>
+        <input type="password" class="form-control" placeholder="Будет доступно после запуска модуля" disabled>
+      </div>
+      <button type="button" class="btn btn-outline-dark" disabled>Подключить кабинет</button>
+      <p class="small text-muted mb-0 mt-2">Модуль в разработке. Поля пока недоступны — это заглушка.</p>
+    </div>
+
+    {% if workspace %}
+    <hr class="my-4">
+    <div class="border rounded p-3 mb-3" style="background:#fffef9;border-color:#e8b84a!important">
+      <h2 class="h5 mb-2">Резюме канала · ИИ-маркетолог</h2>
+      <p class="small text-muted mb-3">
+        После заполнения полей выше нажмите кнопку. Маркетолог соберёт понятное резюме для вас
+        и <strong>правила «под капотом»</strong> для копирайтера, редактора текста и агента картинок/видео.
+        Эти правила подхватятся при генерации постов автоматически.
+      </p>
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+        <button type="button" class="btn btn-accent" id="btn-marketer-brief">
+          {% if marketer_resume %}Обновить резюме ИИ-маркетолога{% else %}Собрать резюме ИИ-маркетолога{% endif %}
+        </button>
+        <span id="marketer-brief-status" class="small text-muted"></span>
+      </div>
+      {% if marketer_has_rules %}
+      <div class="alert alert-success py-2 small mb-2">
+        Правила для агентов сохранены
+        {% if marketer_updated_at %}· обновлено {{ marketer_updated_at }}{% endif %}
+      </div>
+      {% else %}
+      <div class="alert alert-warning py-2 small mb-2">
+        Пока нет резюме. Заполните описание, базу знаний и визуальный стиль — затем соберите резюме.
+      </div>
+      {% endif %}
+      <div id="marketer-resume-box" class="{% if not marketer_resume %}d-none{% endif %}">
+        <label class="form-label">Резюме (видно менеджеру)</label>
+        <div id="marketer-resume-text" class="border rounded p-3 bg-white" style="white-space:pre-wrap;line-height:1.5">{{ marketer_resume }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not workspace %}
+    <div class="mb-3">{{ form.seed_mode.label(class="form-label") }}{{ form.seed_mode(class="form-select") }}</div>
+    {% else %}
+    <input type="hidden" name="seed_mode" value="empty">
+    {% endif %}
+    {{ form.submit(class="btn btn-accent") }}
+    <a class="btn btn-outline-secondary ms-2" href="{{ url_for('workspaces.list_workspaces') }}">Назад</a>
+  </form>
+</div>
+
+<script>
+(function () {
+  const btn = document.getElementById("btn-test-vk");
+  const statusEl = document.getElementById("vk-test-status");
+  const resultEl = document.getElementById("vk-test-result");
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  {% if workspace %}
+  const testUrl = "{{ url_for('workspaces.test_vk', workspace_id=workspace.id) }}";
+  {% else %}
+  const testUrl = "{{ url_for('workspaces.test_vk_new') }}";
+  {% endif %}
+
+  btn?.addEventListener("click", async () => {
+    statusEl.textContent = "Проверяем…";
+    statusEl.className = "small text-muted";
+    resultEl.style.display = "none";
+    const payload = {
+      vk_token: document.getElementById("vk_token")?.value || "",
+      vk_group_id: document.getElementById("vk_group_id")?.value || "",
+    };
+    try {
+      const res = await fetch(testUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        statusEl.textContent = "Ошибка";
+        statusEl.className = "small text-danger";
+        resultEl.style.display = "block";
+        resultEl.className = "alert alert-danger py-2 small mb-3";
+        resultEl.textContent = data.error || "Не удалось подключиться к ВК";
+        return;
+      }
+      statusEl.textContent = "Успех";
+      statusEl.className = "small text-success";
+      resultEl.style.display = "block";
+      resultEl.className = "alert alert-success py-2 small mb-3";
+      let html = "<strong>" + (data.group_name || "Группа") + "</strong>";
+      html += " · id " + (data.group_id || "");
+      if (data.screen_name) html += " · vk.com/" + data.screen_name;
+      if (data.members_count != null) html += " · подписчиков: " + data.members_count;
+      html += "<br><span class='text-muted'>" + (data.source_label || "") + "</span>";
+      if (data.can_read_wall === false) {
+        html += "<br><span class='text-danger'>Стену прочитать не удалось — проверьте права токена (wall).</span>";
+      }
+      resultEl.innerHTML = html;
+      if (data.media_hint) {
+        resultEl.innerHTML += "<br><br>" + data.media_hint;
+      }
+    } catch (e) {
+      statusEl.textContent = "Ошибка сети";
+      statusEl.className = "small text-danger";
+    }
+  });
+})();
+
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const aiUrl = "{{ url_for('workspaces.ai_generate_field') }}";
+
+  function readContext() {
+    return {
+      name: document.getElementById("name")?.value?.trim() || "",
+      theme: document.getElementById("theme")?.value?.trim() || "",
+      description: document.getElementById("description")?.value?.trim() || "",
+    };
+  }
+
+  document.querySelectorAll(".ai-field-generate").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const field = btn.dataset.field;
+      const textarea = document.getElementById(field);
+      const statusEl = document.querySelector('.ai-field-status[data-field="' + field + '"]');
+      if (!textarea || !field) return;
+
+      const ctx = readContext();
+      if (ctx.name.length < 2) {
+        if (statusEl) {
+          statusEl.textContent = "Сначала укажите название канала.";
+          statusEl.className = "small text-danger ai-field-status";
+        }
+        return;
+      }
+
+      const currentText = textarea.value.trim();
+      btn.disabled = true;
+      if (statusEl) {
+        let statusMsg = currentText ? "ИИ улучшает текст…" : "ИИ генерирует…";
+        if (field === "visual_style_prompt") {
+          const refCount = document.querySelectorAll("#visual-refs-list .visual-ref-card").length;
+          statusMsg = refCount
+            ? (currentText ? "ИИ анализирует референсы и улучшает промпт…" : "ИИ анализирует референсы и генерирует промпт…")
+            : statusMsg;
+        }
+        statusEl.textContent = statusMsg;
+        statusEl.className = "small text-muted ai-field-status";
+      }
+
+      try {
+        const payload = {
+          field,
+          name: ctx.name,
+          theme: ctx.theme,
+          description: ctx.description,
+          current_text: currentText,
+        };
+        if (field === "visual_style_prompt") {
+          payload.knowledge_text = document.getElementById("knowledge_text")?.value?.trim() || "";
+          payload.brand_site = document.getElementById("brand_site")?.value?.trim() || "";
+          {% if workspace %}
+          payload.workspace_id = {{ workspace.id }};
+          {% endif %}
+        }
+        const res = await fetch(aiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrf,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          if (statusEl) {
+            statusEl.textContent = data.error || "Не удалось сгенерировать";
+            statusEl.className = "small text-danger ai-field-status";
+          }
+          return;
+        }
+        textarea.value = data.text || "";
+        if (statusEl) {
+          if (field === "visual_style_prompt" && data.rewritten_from_refs) {
+            statusEl.textContent =
+              "Промпт пересобран по " + (data.refs_used || 0) + " референс(ам). Сохраните канал и при необходимости перегенерируйте пример.";
+          } else {
+            statusEl.textContent = data.improved
+              ? "Текст улучшен. Проверьте и сохраните канал."
+              : "Готово. Проверьте и сохраните канал.";
+          }
+          statusEl.className = "small text-success ai-field-status";
+        }
+      } catch (e) {
+        if (statusEl) {
+          statusEl.textContent = "Ошибка сети";
+          statusEl.className = "small text-danger ai-field-status";
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+})();
+
+{% if workspace %}
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const previewStartUrl = "{{ url_for('workspaces.start_style_preview', workspace_id=workspace.id) }}";
+  const jobStatusTpl = "{{ url_for('smm.generate_job_status', job_id='__JOB__') }}";
+  const btnGen = document.getElementById("btn-style-preview-generate");
+  const progressEl = document.getElementById("style-preview-progress");
+  const errorEl = document.getElementById("style-preview-error");
+  const wrapEl = document.getElementById("style-preview-wrap");
+  const emptyEl = document.getElementById("style-preview-empty");
+  const imgEl = document.getElementById("style-preview-img");
+  const linkEl = document.getElementById("style-preview-link");
+  let pollTimer = null;
+
+  function showPreview(url) {
+    if (!url) return;
+    imgEl.src = url;
+    linkEl.href = url;
+    wrapEl?.classList.remove("d-none");
+    emptyEl?.classList.add("d-none");
+    if (btnGen) btnGen.textContent = "Перегенерировать";
+  }
+
+  function pollJob(jobId) {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(jobStatusTpl.replace("__JOB__", encodeURIComponent(jobId)));
+        const data = await res.json();
+        const job = data.job || {};
+        if (job.status === "done") {
+          clearInterval(pollTimer);
+          progressEl.style.display = "none";
+          btnGen.disabled = false;
+          showPreview(job.image_url || "");
+          return;
+        }
+        if (job.status === "error") {
+          clearInterval(pollTimer);
+          progressEl.style.display = "none";
+          btnGen.disabled = false;
+          errorEl.style.display = "block";
+          errorEl.textContent = job.error || "Не удалось создать пример";
+        }
+      } catch (e) {
+        clearInterval(pollTimer);
+        progressEl.style.display = "none";
+        btnGen.disabled = false;
+        errorEl.style.display = "block";
+        errorEl.textContent = "Ошибка сети";
+      }
+    }, 2500);
+  }
+
+  btnGen?.addEventListener("click", async () => {
+    errorEl.style.display = "none";
+    progressEl.style.display = "block";
+    progressEl.textContent = "Идёт генерация примера… 1–2 минуты";
+    btnGen.disabled = true;
+    const payload = {
+      name: document.getElementById("name")?.value?.trim() || "",
+      theme: document.getElementById("theme")?.value?.trim() || "",
+      description: document.getElementById("description")?.value?.trim() || "",
+      visual_style_prompt: document.getElementById("visual_style_prompt")?.value?.trim() || "",
+      brand_site: document.getElementById("brand_site")?.value?.trim() || "",
+    };
+    try {
+      const res = await fetch(previewStartUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.ok || !data.job_id) {
+        progressEl.style.display = "none";
+        btnGen.disabled = false;
+        errorEl.style.display = "block";
+        errorEl.textContent = data.error || "Не удалось запустить генерацию";
+        return;
+      }
+      pollJob(data.job_id);
+    } catch (e) {
+      progressEl.style.display = "none";
+      btnGen.disabled = false;
+      errorEl.style.display = "block";
+      errorEl.textContent = "Ошибка сети";
+    }
+  });
+})();
+
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const uploadUrl = "{{ url_for('workspaces.upload_visual_ref', workspace_id=workspace.id) }}";
+  const deleteUrlTpl = "{{ url_for('workspaces.delete_visual_ref', workspace_id=workspace.id, ref_id='__REF__') }}";
+  const listEl = document.getElementById("visual-refs-list");
+  const statusEl = document.getElementById("refs-upload-status");
+  const inputEl = document.getElementById("reference_uploads");
+  const btnUpload = document.getElementById("btn-upload-refs");
+
+  function renderRefs(refs) {
+    if (!listEl) return;
+    listEl.innerHTML = "";
+    (refs || []).forEach((ref) => {
+      const wrap = document.createElement("div");
+      wrap.className = "visual-ref-card border rounded p-1 position-relative";
+      wrap.dataset.refId = ref.id;
+      wrap.innerHTML =
+        '<img src="' + ref.url + '" alt="' + (ref.name || "") + '" class="rounded" style="width:96px;height:96px;object-fit:cover;">' +
+        '<button type="button" class="btn btn-sm btn-outline-danger visual-ref-delete mt-1 w-100" data-ref-id="' + ref.id + '">Удалить</button>';
+      listEl.appendChild(wrap);
+    });
+    listEl.querySelectorAll(".visual-ref-delete").forEach((btn) => {
+      btn.addEventListener("click", () => deleteRef(btn.dataset.refId));
+    });
+  }
+
+  async function deleteRef(refId) {
+    if (!refId) return;
+    statusEl.textContent = "Удаляем…";
+    try {
+      const res = await fetch(deleteUrlTpl.replace("__REF__", encodeURIComponent(refId)), {
+        method: "POST",
+        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        statusEl.textContent = data.error || "Ошибка удаления";
+        statusEl.className = "small text-danger";
+        return;
+      }
+      renderRefs(data.refs);
+      statusEl.textContent = "Удалено";
+      statusEl.className = "small text-success";
+    } catch (e) {
+      statusEl.textContent = "Ошибка сети";
+      statusEl.className = "small text-danger";
+    }
+  }
+
+  listEl?.querySelectorAll(".visual-ref-delete").forEach((btn) => {
+    btn.addEventListener("click", () => deleteRef(btn.dataset.refId));
+  });
+
+  btnUpload?.addEventListener("click", async () => {
+    const files = inputEl?.files;
+    if (!files || !files.length) {
+      statusEl.textContent = "Выберите файлы";
+      statusEl.className = "small text-danger";
+      return;
+    }
+    const fd = new FormData();
+    for (const f of files) fd.append("reference_uploads", f);
+    statusEl.textContent = "Загружаем…";
+    statusEl.className = "small text-muted";
+    try {
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        statusEl.textContent = data.error || "Не удалось загрузить";
+        statusEl.className = "small text-danger";
+        return;
+      }
+      renderRefs(data.refs);
+      inputEl.value = "";
+      statusEl.textContent = "Загружено: " + (data.added || []).length;
+      statusEl.className = "small text-success";
+    } catch (e) {
+      statusEl.textContent = "Ошибка сети";
+      statusEl.className = "small text-danger";
+    }
+  });
+})();
+
+(function () {
+  const btn = document.getElementById("btn-marketer-brief");
+  const statusEl = document.getElementById("marketer-brief-status");
+  const resumeBox = document.getElementById("marketer-resume-box");
+  const resumeText = document.getElementById("marketer-resume-text");
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const startUrl = {{ url_for('workspaces.marketer_brief_generate', workspace_id=workspace.id) | tojson }};
+  const jobBase = {{ url_for('workspaces.marketer_brief_job_status', job_id='JOB') | tojson }};
+
+  async function poll(jobId) {
+    const url = jobBase.replace("JOB", jobId);
+    for (;;) {
+      const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error((data && data.error) || "Ошибка статуса");
+      const job = data.job;
+      if (statusEl) statusEl.textContent = job.message || job.step || "Работаем…";
+      if (job.status === "done") {
+        const resume = (job.plan_meta && job.plan_meta.resume) || "";
+        if (resumeText) resumeText.textContent = resume;
+        if (resumeBox) resumeBox.classList.remove("d-none");
+        if (statusEl) {
+          statusEl.textContent = "Готово. Правила для агентов сохранены под капотом.";
+          statusEl.className = "small text-success";
+        }
+        return;
+      }
+      if (job.status === "error") throw new Error(job.error || "Не удалось собрать резюме");
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+  }
+
+  btn?.addEventListener("click", async () => {
+    btn.disabled = true;
+    if (statusEl) {
+      statusEl.textContent = "Сохраняем поля и запускаем ИИ-маркетолога…";
+      statusEl.className = "small text-muted";
+    }
+    try {
+      const res = await fetch(startUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          save_fields: true,
+          name: document.getElementById("name")?.value || "",
+          theme: document.getElementById("theme")?.value || "",
+          description: document.getElementById("description")?.value || "",
+          brand_site: document.getElementById("brand_site")?.value || "",
+          search_hint: document.querySelector('[name="search_hint"]')?.value || "",
+          knowledge_text: document.getElementById("knowledge_text")?.value || "",
+          visual_style_prompt: document.getElementById("visual_style_prompt")?.value || "",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Не удалось запустить");
+      await poll(data.job_id);
+    } catch (e) {
+      if (statusEl) {
+        statusEl.textContent = e.message || String(e);
+        statusEl.className = "small text-danger";
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+{% endif %}
+</script>
+
+<script>
+(function () {
+  const select = document.getElementById("package_code");
+  const wrap = document.getElementById("custom-limit-wrap");
+  const cards = [...document.querySelectorAll(".package-card")];
+  const hint = document.getElementById("package-pick-hint");
+  const used = Number(document.getElementById("package-status-box")?.dataset.used || 0);
+  const titles = {
+    none: "Без пакета",
+    start: "Старт · 12 постов/мес",
+    business: "Бизнес · 25 постов/мес",
+    premium: "Премиум · 45 постов/мес + видео",
+    custom: "Свой лимит",
+  };
+  const limits = { none: 0, start: 12, business: 25, premium: 45 };
+
+  function syncCustom() {
+    if (!wrap || !select) return;
+    wrap.style.display = select.value === "custom" ? "" : "none";
+  }
+
+  function highlight(code) {
+    cards.forEach((card) => {
+      const on = card.dataset.package === code;
+      card.classList.toggle("border-warning", on);
+      card.style.boxShadow = on ? "0 0 0 2px #e8b84a" : "";
+    });
+  }
+
+  function previewLimit(code) {
+    const titleEl = document.getElementById("package-status-title");
+    const numsEl = document.getElementById("package-status-numbers");
+    const leftEl = document.getElementById("package-status-left");
+    const bar = document.getElementById("package-status-bar");
+    const blockedEl = document.getElementById("package-status-blocked");
+    if (!titleEl) return;
+    titleEl.textContent = titles[code] || code;
+    if (code === "none") {
+      if (numsEl) numsEl.textContent = "без лимита";
+      if (leftEl) leftEl.textContent = "";
+      if (bar) {
+        bar.style.width = "0%";
+        bar.parentElement?.classList.add("d-none");
+      }
+      if (blockedEl) blockedEl.classList.add("d-none");
+      return;
+    }
+    let limit = limits[code];
+    if (code === "custom") {
+      limit = Number(document.getElementById("package_posts_limit")?.value || 0);
+    }
+    if (!limit) {
+      if (numsEl) numsEl.textContent = "без лимита";
+      if (leftEl) leftEl.textContent = "";
+      return;
+    }
+    const left = Math.max(0, limit - used);
+    const percent = Math.min(100, Math.round((100 * used) / limit));
+    if (numsEl) numsEl.textContent = used + "/" + limit;
+    if (leftEl) leftEl.textContent = "осталось " + left;
+    if (bar) {
+      bar.parentElement?.classList.remove("d-none");
+      bar.style.width = percent + "%";
+      bar.className = "progress-bar " + (used >= limit ? "bg-danger" : percent >= 80 ? "bg-warning" : "bg-success");
+    }
+    if (blockedEl) {
+      if (used >= limit) {
+        blockedEl.textContent = "Лимит исчерпан при этом пакете.";
+        blockedEl.classList.remove("d-none");
+      } else {
+        blockedEl.classList.add("d-none");
+      }
+    }
+  }
+
+  function setPackage(code) {
+    if (!select) return;
+    select.value = code;
+    highlight(code);
+    syncCustom();
+    previewLimit(code);
+    if (hint) hint.textContent = "Выбрано: " + (titles[code] || code) + " — нажмите «Сохранить пакет»";
+  }
+
+  cards.forEach((card) => {
+    card.addEventListener("click", () => setPackage(card.dataset.package));
+  });
+  select?.addEventListener("change", () => setPackage(select.value));
+  document.getElementById("package_posts_limit")?.addEventListener("input", () => {
+    if (select?.value === "custom") previewLimit("custom");
+  });
+  if (select) setPackage(select.value || "business");
+})();
+</script>
+
+{% if workspace and client_approve_url %}
+<script>
+(function () {
+  const btn = document.getElementById("btn-copy-client-url");
+  const input = document.getElementById("client-approve-url");
+  btn?.addEventListener("click", async () => {
+    if (!input) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      btn.textContent = "Скопировано";
+      setTimeout(() => { btn.textContent = "Копировать"; }, 1500);
+    } catch (e) {
+      input.select();
+      document.execCommand("copy");
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

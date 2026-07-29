@@ -1,0 +1,30 @@
+{
+  "name": "Тестовый месяц VK: базовые изменения НДС 2026",
+  "period_days": 30,
+  "start_date": "2026-05-01",
+  "publish_time": "10:00",
+  "timezone": "+10:00",
+  "sequence": [
+    "expert",
+    "razbor",
+    "serial",
+    "checklist",
+    "case",
+    "humor",
+    "calculation",
+    "law_review",
+    "poll",
+    "razbor"
+  ],
+  "format_names": {
+    "expert": "экспертный пост",
+    "razbor": "разбор темы",
+    "serial": "сериал «Будни бухгалтера»",
+    "checklist": "чек-лист",
+    "case": "разбор кейса",
+    "humor": "развлекательный пост",
+    "calculation": "пример расчёта",
+    "law_review": "разбор закона",
+    "poll": "опрос"
+  }
+}

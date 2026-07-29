@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}План · {{ plan.title }} · {{ workspace.name }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <p class="text-muted small mb-1">Сохранённый контент-план · {{ workspace.name }}</p>
+    <h1 class="h3 mb-1">{{ plan.title or ('План #' ~ plan.id) }}</h1>
+    <p class="text-muted mb-0">
+      {% if plan.client_status == 'pending' %}<span class="badge text-bg-warning">на согласовании</span>
+      {% elif plan.client_status == 'approved' %}<span class="badge text-bg-success">согласован</span>
+      {% elif plan.client_status == 'rejected' %}<span class="badge text-bg-danger">на правки</span>
+      {% else %}<span class="badge text-bg-secondary">{{ status_label }}</span>
+      {% endif %}
+      · тем: {{ topics|length }}
+      {% if plan.saved_to_calendar %} · уже в календаре{% else %} · ещё не в календаре{% endif %}
+      {% if plan.created_at %} · сохранён {{ plan.created_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}
+    </p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-dark" href="{{ url_for('workspaces.content_plan', workspace_id=workspace.id) }}">Все планы / новый</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Согласование</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('smm.calendar') }}">Календарь</a>
+  </div>
+</div>
+
+{% if plan.client_comment %}
+<div class="alert alert-light border mb-3">Комментарий: {{ plan.client_comment }}</div>
+{% endif %}
+
+{% if plan.audience_summary %}
+<div class="panel mb-3">
+  <h2 class="h6">Аудитория</h2>
+  <p class="mb-0 small">{{ plan.audience_summary }}</p>
+</div>
+{% endif %}
+
+{% if plan.timing_logic %}
+<div class="panel mb-3">
+  <h2 class="h6">Логика времени</h2>
+  <p class="mb-0 small">{{ plan.timing_logic }}</p>
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2 class="h6 mb-3">Темы плана</h2>
+  {% if topics %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Когда</th>
+          <th>Рубрика</th>
+          <th>Тема</th>
+          <th>Формат</th>
+          <th>Подсказка</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in topics %}
+        <tr>
+          <td class="small">{{ format_publish_at(it.scheduled_for) if it.scheduled_for else '—' }}</td>
+          <td class="small">{{ it.rubric_title or it.rubric_code or '—' }}</td>
+          <td>{{ it.topic }}</td>
+          <td class="small">{{ it.format or '—' }}</td>
+          <td class="small text-muted">{{ it.note or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted mb-0">В этом плане нет тем.</p>
+  {% endif %}
+</div>
+
+{% if plan.client_status == 'approved' and not plan.saved_to_calendar %}
+<div class="mt-3">
+  <form method="post" action="{{ url_for('smm.client_approvals_to_calendar', workspace_id=workspace.id, plan_id=plan.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-accent">Внести этот план в календарь</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Визуал полностью · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h3 mb-1">Визуал полностью</h1>
+    <p class="text-muted mb-0">{{ draft.topic }} · <code>{{ draft.post_type }}</code></p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('smm.preview', draft_id=draft.id) }}">Назад к черновику</a>
+    <a class="btn btn-outline-dark" href="{{ url_for('smm.preview_download_visual', draft_id=draft.id, kind=kind) }}">
+      {% if kind == "image" %}Скачать изображение{% else %}Скачать видео{% endif %}
+    </a>
+  </div>
+</div>
+
+<div class="panel">
+  {% if kind == "image" %}
+    <img src="{{ media_url }}" alt="Визуал полностью" style="width:100%;height:auto;border-radius:12px">
+  {% else %}
+    <video controls src="{{ media_url }}" style="width:100%;height:auto;border-radius:12px"></video>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Коммерческое предложение · VK SMM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #12151c;
+      --ink-soft: #2a3140;
+      --paper: #f7f4ee;
+      --card: #ffffff;
+      --gold: #d4a017;
+      --gold-deep: #b8860b;
+      --line: #e4ddd0;
+      --muted: #5c6578;
+      --dark: #0f1419;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Manrope, system-ui, sans-serif;
+      color: var(--ink);
+      background: #e8e4db;
+      line-height: 1.55;
+      font-size: 15px;
+    }
+
+    .sheet {
+      max-width: 920px;
+      margin: 24px auto;
+      background: var(--paper);
+      box-shadow: 0 12px 40px rgba(18, 21, 28, 0.12);
+    }
+
+    .hero {
+      background:
+        radial-gradient(ellipse at 20% 0%, rgba(212, 160, 23, 0.22), transparent 50%),
+        linear-gradient(160deg, #0f1419 0%, #1a2230 55%, #121820 100%);
+      color: #f4f1ea;
+      padding: 48px 48px 40px;
+    }
+    .hero__badge {
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      margin: 0 0 14px;
+      font-size: 2rem;
+      line-height: 1.2;
+      font-weight: 800;
+      max-width: 18ch;
+    }
+    .hero__lead {
+      margin: 0 0 24px;
+      max-width: 42rem;
+      color: rgba(244, 241, 234, 0.88);
+      font-size: 1.05rem;
+    }
+    .hero__meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      font-size: 13px;
+      color: rgba(244, 241, 234, 0.7);
+    }
+    .hero__meta strong { color: var(--gold); font-weight: 700; }
+
+    .content { padding: 36px 48px 48px; }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--ink);
+    }
+    h3 {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--gold-deep);
+      font-weight: 700;
+    }
+    p { margin: 0 0 12px; color: var(--ink-soft); }
+    ul { margin: 0 0 16px; padding-left: 1.2rem; color: var(--ink-soft); }
+    li { margin-bottom: 6px; }
+
+    .section { margin-bottom: 36px; }
+    .section--break { /* разрывы только в @media print */ }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+    }
+    .card--dark {
+      background: var(--dark);
+      border-color: #2a3344;
+      color: #f4f1ea;
+    }
+    .card--dark p, .card--dark li { color: rgba(244, 241, 234, 0.86); }
+    .card--accent {
+      border-color: var(--gold);
+      box-shadow: inset 0 0 0 1px rgba(212, 160, 23, 0.35);
+    }
+
+    .shot {
+      margin: 0 0 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .shot img {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      object-fit: contain;
+      object-position: top center;
+      background: #e8e4db;
+    }
+    .shot figcaption {
+      padding: 10px 14px 12px;
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+    }
+    .shot figcaption strong {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+
+    .shot-grid {
+      display: grid;
+      gap: 14px;
+      margin: 0 0 18px;
+    }
+    .shot-grid--2 { grid-template-columns: 1fr 1fr; }
+    .shot-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+    .shot-grid .shot { margin: 0; }
+    .shot-grid .shot figcaption { font-size: 12px; padding: 8px 10px 10px; }
+    .shot-grid .shot figcaption strong { font-size: 13px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      font-size: 14px;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      background: #efeae0;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ink-soft);
+    }
+    tr:last-child td { border-bottom: none; }
+    .price { font-weight: 800; color: var(--ink); white-space: nowrap; }
+    .note { font-size: 13px; color: var(--muted); }
+
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .steps li {
+      position: relative;
+      padding: 14px 16px 14px 58px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin-bottom: 10px;
+    }
+    .steps li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: #12151c;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+
+    .tech-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .tech-list li {
+      margin: 0;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #efeae0;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .cta {
+      background: linear-gradient(160deg, #0f1419, #1a2230);
+      color: #f4f1ea;
+      border-radius: 16px;
+      padding: 28px;
+      margin-top: 8px;
+    }
+    .cta h2 { color: #fff; }
+    .cta p { color: rgba(244, 241, 234, 0.85); }
+    .cta__row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    .cta__row strong { color: var(--gold); }
+
+    .footer {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .print-hint {
+      max-width: 920px;
+      margin: 0 auto 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @page {
+      size: A4;
+      margin: 10mm;
+    }
+
+    @media print {
+      body {
+        background: #fff !important;
+        font-size: 11.5px;
+        line-height: 1.4;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .print-hint { display: none !important; }
+      .sheet {
+        margin: 0;
+        box-shadow: none;
+        max-width: none;
+        width: 100%;
+        background: var(--paper);
+      }
+      .hero {
+        padding: 16px 14px !important;
+        border-radius: 0;
+      }
+      .hero h1 { font-size: 1.35rem; max-width: none; margin-bottom: 8px; }
+      .hero__lead, .landing-lead { font-size: 0.95rem !important; margin-bottom: 10px !important; }
+      .content { padding: 12px 10px 14px !important; }
+      a { color: inherit; text-decoration: none; }
+
+      .section { margin-bottom: 12px; }
+      /* Разрыв только перед скринами и финалом — иначе на страницах остаются дыры */
+      .section--break {
+        break-before: auto;
+        page-break-before: auto;
+      }
+      .section--shots {
+        break-before: page;
+        page-break-before: always;
+      }
+      .section--finale {
+        break-before: page;
+        page-break-before: always;
+      }
+      h2 { font-size: 1.15rem; margin-bottom: 6px; }
+      h3 { font-size: 0.98rem; }
+      p { margin-bottom: 6px; }
+      ul { margin-bottom: 8px; }
+
+      .grid-2, .grid-3 { gap: 8px; }
+      .grid-3 { grid-template-columns: 1fr 1fr; }
+      .card {
+        padding: 10px 12px;
+        border-radius: 10px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .steps li {
+        padding: 8px 10px 8px 44px;
+        margin-bottom: 6px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .steps li::before {
+        width: 24px;
+        height: 24px;
+        left: 10px;
+        top: 8px;
+        font-size: 12px;
+      }
+      table {
+        font-size: 11px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      th, td { padding: 6px 8px; }
+
+      /* Скрины плотно, без «дыр» на полстраницы */
+      .shot {
+        break-before: auto;
+        page-break-before: auto;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin: 0 0 10px;
+        border-radius: 10px;
+      }
+      .shot--hero {
+        break-before: auto;
+        page-break-before: auto;
+      }
+      .shot img {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        height: auto !important;
+        object-fit: cover !important;
+        object-position: top center;
+      }
+      .shot--hero img { max-height: 195mm !important; object-fit: contain !important; }
+      .shot figcaption { padding: 6px 10px 8px; font-size: 11px; }
+      .shot figcaption strong { font-size: 12px; }
+
+      .shot-grid {
+        gap: 8px;
+        margin-bottom: 10px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .shot-grid .shot img {
+        max-height: 78mm !important;
+        object-fit: cover !important;
+        object-position: top center;
+      }
+      .shot-grid--2 .shot img { max-height: 105mm !important; }
+
+      .section--after-shots {
+        break-before: auto;
+        page-break-before: auto;
+      }
+
+      .cta {
+        padding: 16px !important;
+        border-radius: 12px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .footer { margin-top: 12px; padding-top: 8px; }
+    }
+
+    @media (max-width: 720px) {
+      .hero, .content { padding: 28px 20px; }
+      .grid-2, .grid-3, .shot-grid--2, .shot-grid--3 { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 1.55rem; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+
+<p class="print-hint">
+  Онлайн-просмотр: <a href="http://127.0.0.1:8765/%D0%9A%D0%9F-VK-SMM.html">http://127.0.0.1:8765/</a>
+  · PDF: Ctrl+P → «Сохранить как PDF».
+</p>
+
+<article class="sheet">
+
+  <!-- Обложка -->
+  <header class="hero">
+    <p class="hero__badge">Коммерческое предложение · для SMM-агентств</p>
+    <h1>Больше прибыли с каждого клиента ВК — без расширения команды</h1>
+    <p class="landing-lead" style="color:rgba(244,241,234,.88);max-width:42rem">
+      VK SMM — кабинет агентства: контент-план, генерация текста и визуала,
+      согласование, публикация во&nbsp;ВК, отчёты. С тарифа Pro — ВК Реклама в том же канале.
+    </p>
+    <div class="hero__meta">
+      <span><strong>Для кого:</strong> владельцы агентств и команды с 10+ клиентами ВК</span>
+      <span><strong>Старт:</strong> 14 дней Free</span>
+      <span><strong>Окупаемость:</strong> часто уже на 1-м новом клиенте</span>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- Проблема в деньгах -->
+    <section class="section">
+      <p class="eyebrow">Проблема в деньгах</p>
+      <h2>Агентства растут до потолка себестоимости</h2>
+      <p>
+        Клиентов находить умеют. Упираются в другое: каждый новый проект требует часов менеджера,
+        дизайна, согласований и контроля. Чтобы взять ещё клиента — часто приходится нанимать.
+      </p>
+      <div class="grid-2">
+        <div class="card card--accent">
+          <h3>Среднее агентство</h3>
+          <p><strong>20 клиентов × 50 000 ₽ = ≈ 1 000 000 ₽</strong> оборота в месяц</p>
+        </div>
+        <div class="card card--accent">
+          <h3>После автоматизации рутины</h3>
+          <p><strong>≈ 160–180 тыс. ₽</strong> дополнительной прибыли в месяц на портфеле.
+          Сервис окупается в первый месяц.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Экономика -->
+    <section class="section section--break">
+      <p class="eyebrow">Экономика агентства</p>
+      <h2>Что меняется на одном клиенте</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>До VK SMM</h3>
+          <ul>
+            <li>Средний чек: <strong>50 000 ₽</strong></li>
+            <li>Расходы: <strong>26 000 ₽</strong></li>
+            <li>Прибыль: <strong>24 000 ₽</strong></li>
+          </ul>
+        </div>
+        <div class="card card--accent">
+          <h3>С VK SMM</h3>
+          <ul>
+            <li>Средний чек: <strong>50 000 ₽</strong></li>
+            <li>Расходы: <strong>~19 000 ₽</strong></li>
+            <li>Прибыль: <strong>~31 000 ₽</strong></li>
+          </ul>
+        </div>
+      </div>
+      <p><strong>+7–10 тыс. ₽ доп. прибыли с каждого клиента ежемесячно.</strong>
+      На 10 клиентах ≈80–90 тыс. ₽/мес, на 20 — ≈160–180 тыс. ₽/мес — без пропорционального найма.</p>
+      <table>
+        <thead><tr><th>Клиентов</th><th>Доп. прибыль / мес*</th></tr></thead>
+        <tbody>
+          <tr><td>10</td><td class="price">≈ 80–90 тыс. ₽</td></tr>
+          <tr><td>20</td><td class="price">≈ 160–180 тыс. ₽</td></tr>
+          <tr><td>30</td><td class="price">≈ 240–270 тыс. ₽</td></tr>
+          <tr><td>50</td><td class="price">≈ 400–450 тыс. ₽</td></tr>
+        </tbody>
+      </table>
+      <p class="note">*При среднем чеке ~50 тыс. ₽ и снижении себестоимости на 25–40%.</p>
+    </section>
+
+    <!-- Окупаемость + рынок -->
+    <section class="section section--break">
+      <p class="eyebrow">Окупаемость</p>
+      <h2>Почему сервис окупается уже на первом новом клиенте</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Стоимость сервиса</h3>
+          <p><strong>≈ 4–10 тыс. ₽/мес</strong></p>
+          <p class="note">Пример: Стандарт + 2×Бизнес = 4 070 ₽</p>
+        </div>
+        <div class="card card--accent">
+          <h3>Прибыль с 1 клиента</h3>
+          <p><strong>≈ 24–31 тыс. ₽/мес</strong></p>
+          <p class="note">Один новый клиент окупает сервис несколько раз</p>
+        </div>
+      </div>
+
+      <p class="eyebrow" style="margin-top:1.5rem">Сравнение с рынком</p>
+      <h2>Почему не «ещё один ChatGPT»</h2>
+      <table>
+        <thead><tr><th>Задача</th><th>Сейчас</th><th>VK SMM</th></tr></thead>
+        <tbody>
+          <tr><td>Переписка и правки</td><td>Telegram</td><td>согласование по ссылке</td></tr>
+          <tr><td>Тексты и брифы</td><td>Google Docs / ChatGPT</td><td>план + генерация в кабинете</td></tr>
+          <tr><td>Учёт и статусы</td><td>Excel</td><td>панель по всем клиентам</td></tr>
+          <tr><td>Визуал</td><td>Canva / отдельно</td><td>картинка и видео в стиле канала</td></tr>
+          <tr><td>Публикация</td><td>планировщик / вручную</td><td>календарь + ВК</td></tr>
+          <tr><td>Отчёт клиенту</td><td>собирают вручную</td><td>месячный отчёт Excel/PDF</td></tr>
+          <tr><td><strong>Всё вместе</strong></td><td>5–7 сервисов</td><td><strong>один кабинет</strong></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Решение -->
+    <section class="section section--break">
+      <p class="eyebrow">Решение</p>
+      <h2>Что делает продукт</h2>
+      <div class="grid-3">
+        <div class="card">
+          <h3>Контент-план</h3>
+          <p>ИИ-маркетолог предлагает темы, даты и лучшее время под рубрики канала.</p>
+        </div>
+        <div class="card">
+          <h3>Генерация</h3>
+          <p>Текст поста, картинка и видео в стиле канала; проверка актуальности отдельным агентом.</p>
+        </div>
+        <div class="card">
+          <h3>Согласование</h3>
+          <p>Клиент утверждает план по ссылке — без переписки в мессенджере.</p>
+        </div>
+        <div class="card">
+          <h3>Календарь и ВК</h3>
+          <p>Готовые материалы уходят в группу ВКонтакте по расписанию.</p>
+        </div>
+        <div class="card">
+          <h3>Отчёт клиенту</h3>
+          <p>Сводка за месяц, рубрики, статусы постов; выгрузка Excel / PDF.</p>
+        </div>
+        <div class="card">
+          <h3>ВК Реклама</h3>
+          <p>В тарифе Pro: подключение рекламного кабинета в настройках канала (модуль в продукте, статус «Скоро»).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Как работает -->
+    <section class="section">
+      <p class="eyebrow">Процесс</p>
+      <h2>Новый проект — за 15 минут</h2>
+      <ol class="steps">
+        <li><strong>Заводите клиента</strong> — тема, стиль, пакет услуг, подключение группы ВК.</li>
+        <li><strong>Собирается план</strong> — ИИ предлагает темы и даты на период.</li>
+        <li><strong>Клиент жмёт «согласовать»</strong> — одной ссылкой.</li>
+        <li><strong>Кабинет ведёт дальше</strong> — генерация, календарь, публикация, отчёт.</li>
+      </ol>
+    </section>
+
+    <!-- Скриншоты — плотная сетка (и на экране, и в PDF) -->
+    <section class="section section--shots">
+      <p class="eyebrow">Результаты работы</p>
+      <h2>Скриншоты интерфейса</h2>
+      <p>Реальные экраны рабочего кабинета VK SMM.</p>
+
+      <figure class="shot shot--hero">
+        <img src="kp-screens/04-manager.png?v=3" alt="Панель управления агентства" />
+        <figcaption>
+          <strong>1. Панель управления</strong>
+          Все клиенты списком: статусы, просрочки, ближайшие публикации, быстрые действия.
+        </figcaption>
+      </figure>
+
+      <div class="shot-grid shot-grid--3">
+        <figure class="shot">
+          <img src="kp-screens/09-content-plan.png?v=3" alt="Контент-план" />
+          <figcaption>
+            <strong>2. Контент-план</strong>
+            ИИ предлагает темы и даты на период.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/08-generate.png?v=3" alt="Генерация поста" />
+          <figcaption>
+            <strong>3. Генерация</strong>
+            Текст, картинка, видео в стиле канала.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/05-calendar.png?v=3" alt="Календарь" />
+          <figcaption>
+            <strong>4. Календарь</strong>
+            Публикации по расписанию.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="shot-grid shot-grid--2">
+        <figure class="shot">
+          <img src="kp-screens/06-report.png?v=3" alt="Отчёт клиенту" />
+          <figcaption>
+            <strong>5. Месячный отчёт</strong>
+            Сводка и выгрузка Excel / PDF.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/02-pricing.png?v=3" alt="Тарифы" />
+          <figcaption>
+            <strong>6. Тарифы продукта</strong>
+            Кабинет + оплата за активные каналы.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="shot-grid shot-grid--2">
+        <figure class="shot">
+          <img src="kp-screens/03-vk-ads.png?v=3" alt="ВК Реклама" />
+          <figcaption>
+            <strong>7. ВК Реклама</strong>
+            В тарифе Pro — в кабинете канала.
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="kp-screens/07-channels.png?v=3" alt="Каналы" />
+          <figcaption>
+            <strong>8. Каналы клиентов</strong>
+            Все проекты ВК в одном списке.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Технологии -->
+    <section class="section section--after-shots">
+      <p class="eyebrow">Технологии</p>
+      <h2>Нейросети и API</h2>
+      <div class="card">
+        <p>
+          Проект реализован на <strong>Python</strong> (веб-кабинет Flask).
+          Генерация идёт через цепочку агентов: поиск, проверка актуальности, текст, промпт визуала, картинка/видео, публикация ВК.
+        </p>
+        <ul class="tech-list">
+          <li>Claude (текст через KIE / резерв VseGPT)</li>
+          <li>Картинки: VseGPT → KIE</li>
+          <li>Видео: Kling (KIE)</li>
+          <li>API ВКонтакте</li>
+          <li>Мультиагентный пайплайн</li>
+          <li>База знаний канала</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Тарифы -->
+    <section class="section">
+      <p class="eyebrow">Стоимость</p>
+      <h2>Тарифы кабинета + каналы</h2>
+      <p>
+        Тариф открывает функции. Каждый канал ВК клиента оплачивается отдельно по пакету.
+        Добавили клиента — доплатили. Отключили — перестали платить.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Тариф</th>
+            <th>Цена</th>
+            <th>Что входит</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Free</strong></td>
+            <td class="price">0 ₽</td>
+            <td>14 дней полного доступа — пройти цикл от настройки до публикации</td>
+          </tr>
+          <tr>
+            <td><strong>Стандарт</strong></td>
+            <td class="price">1 490 ₽/мес</td>
+            <td>План, генерация, согласование, публикация, отчёт + каналы</td>
+          </tr>
+          <tr>
+            <td><strong>Pro</strong></td>
+            <td class="price">3 900 ₽/мес</td>
+            <td>Всё из Стандарта + подключение ВК Реклама в кабинете канала</td>
+          </tr>
+          <tr>
+            <td><strong>Agency</strong></td>
+            <td class="price">9 900 ₽/мес</td>
+            <td>Команда менеджеров, сводка по портфелю, приоритетная поддержка</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:16px"><strong>Оплата за канал клиента</strong></p>
+      <table>
+        <thead>
+          <tr>
+            <th>Пакет</th>
+            <th>Постов / мес</th>
+            <th>Цена канала</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Старт</td>
+            <td>12</td>
+            <td class="price">690 ₽</td>
+          </tr>
+          <tr>
+            <td>Бизнес</td>
+            <td>25 (+ видео)</td>
+            <td class="price">1 290 ₽</td>
+          </tr>
+          <tr>
+            <td>Премиум</td>
+            <td>45 (+ видео)</td>
+            <td class="price">2 290 ₽</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="note" style="margin-top:12px">
+        Пример: тариф Стандарт + 2 канала «Бизнес» = 1 490 + 2 × 1 290 = <strong>4 070 ₽/мес</strong>.
+        Модель тарифов описана для продаж; биллинг в коде может подключаться поэтапно.
+      </p>
+    </section>
+
+    <!-- Финал -->
+    <section class="section section--finale">
+      <p class="eyebrow">Итог для владельца</p>
+      <h2>Что получает агентство</h2>
+      <ul class="steps" style="list-style:none;padding:0;counter-reset:none">
+        <li>✔ прибыль с клиента выше</li>
+        <li>✔ менеджер ведёт больше проектов</li>
+        <li>✔ меньше ошибок и просрочек</li>
+        <li>✔ быстрее согласования</li>
+        <li>✔ выше шанс продлить договор (есть отчёт)</li>
+        <li>✔ не нужен новый сотрудник при каждом скачке роста</li>
+      </ul>
+      <div class="card card--accent" style="margin:1.25rem 0">
+        <p>
+          Большинство агентств перестают расти не потому, что нет клиентов.
+          Они перестают расти, потому что команда больше не справляется.
+        </p>
+        <p class="mb-0">
+          <strong>VK SMM снимает это ограничение:</strong> автоматизирует рутину и позволяет
+          обслуживать больше проектов без пропорционального увеличения штата.
+        </p>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <h2>Попробовать бесплатно 14 дней</h2>
+      <p>
+        Один проект → контент-план → согласование → публикация.
+        Дальше — рост портфеля на той же команде.
+      </p>
+      <div class="cta__row">
+        <span><strong>Продукт:</strong> VK SMM</span>
+        <span><strong>Демо:</strong> http://127.0.0.1:5050</span>
+        <span><strong>Модель:</strong> тариф + активные каналы</span>
+      </div>
+    </section>
+
+    <footer class="footer">
+      VK SMM · коммерческое предложение · июль 2026.
+      Расчёты — ориентиры; факт зависит от чека и процессов агентства.
+      Не содержит API-ключей и паролей.
+    </footer>
+  </div>
+</article>
+
+</body>
+</html>

@@ -1,0 +1,635 @@
+{% extends "base.html" %}
+{% block title %}Генерация · VK SMM{% endblock %}
+{% block content %}
+<p class="lk-kicker mb-1">Кабинет агентства</p>
+<h1 class="h3 mb-3">Генерация поста</h1>
+<p class="text-muted">Канал: <strong>{{ workspace.name }}</strong>
+  {% if workspace.theme %} · {{ workspace.theme }}{% endif %}
+  · <a href="{{ url_for('workspaces.list_workspaces') }}">сменить канал</a>
+  · <a href="{{ url_for('workspaces.rubrics', workspace_id=workspace.id) }}">рубрики</a>
+</p>
+
+{% if package_status %}
+<div class="alert {% if package_status.blocked %}alert-danger{% else %}alert-light border{% endif %} py-2">
+  <div class="d-flex flex-wrap justify-content-between gap-2 align-items-center">
+    <div>
+      Пакет: <strong>{{ package_status.title }}</strong>
+      {% if package_status.unlimited %}
+      · без лимита
+      {% else %}
+      · использовано {{ package_status.used }}/{{ package_status.limit }}
+      · осталось {{ package_status.left }}
+      {% endif %}
+      <span class="text-muted small"> · {{ package_status.period_label }}</span>
+    </div>
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) }}">Сменить пакет</a>
+  </div>
+  {% if not package_status.unlimited %}
+  <div class="progress mt-2" style="height:8px">
+    <div class="progress-bar {% if package_status.blocked %}bg-danger{% elif package_status.percent >= 80 %}bg-warning{% else %}bg-success{% endif %}"
+         style="width: {{ package_status.percent }}%"></div>
+  </div>
+  {% endif %}
+  {% if package_status.blocked %}
+  <div class="small mt-2 mb-0">Лимит исчерпан — генерация новых постов заблокирована до смены пакета или нового месяца.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div id="gen-error" class="alert alert-danger d-none" role="alert"></div>
+<div id="gen-warning" class="alert alert-warning d-none" role="alert"></div>
+{% if continue_draft %}
+<div class="alert alert-info">
+  Продолжаем черновик: <strong>{{ continue_draft.topic or 'без темы' }}</strong>.
+  Материалы и настройки подставлены автоматически.
+  <a href="{{ url_for('smm.preview', draft_id=continue_draft.id) }}">Вернуться к предпросмотру</a>
+</div>
+{% endif %}
+
+<div class="panel">
+  <form id="generate-form" method="post" enctype="multipart/form-data" action="{{ url_for('smm.generate_start') }}">
+    {{ form.hidden_tag() }}
+    {% if continue_draft %}
+    <input type="hidden" name="continue_draft_id" value="{{ continue_draft.id }}">
+    {% endif %}
+    <div class="row g-3">
+      <div class="col-md-8">
+        {{ form.topic.label(class="form-label") }}
+        {{ form.topic(class="form-control", id="field-topic") }}
+      </div>
+      <div class="col-md-4">
+        {{ form.post_type.label(class="form-label") }}
+        {{ form.post_type(class="form-select") }}
+      </div>
+      <div class="col-12">
+        {{ form.tone.label(class="form-label") }}
+        {{ form.tone(class="form-control") }}
+      </div>
+
+      <div class="col-12">
+        <label class="form-label fw-semibold">Загрузка материалов</label>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <input class="form-control" style="max-width:420px" type="file" id="field-uploads" name="uploads" accept=".txt,.md,.markdown,.csv,.doc,.docx,.pdf,.xls,.xlsx,text/plain,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple>
+          <button type="button" class="btn btn-outline-dark" id="btn-upload">Добавить файлы</button>
+        </div>
+        <div class="form-text">Можно несколько файлов: Word (.doc/.docx), PDF, Excel (.xls/.xlsx), txt, md, csv</div>
+        <ul class="material-list mt-2" id="list-files">
+          {% for f in bag_files %}
+          <li data-id="{{ f.id }}">
+            <span class="material-list__title">{{ f.name }}</span>
+            <span class="material-list__meta">{{ f.chars }} симв.</span>
+            <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-file" data-id="{{ f.id }}">убрать</button>
+          </li>
+          {% else %}
+          <li class="text-muted empty-hint" id="files-empty">Файлы ещё не загружены</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label fw-semibold">Подпись внизу визуала</label>
+        <div class="form-text mb-2">Текст или логотип, который нужно поставить маленьким в самом низу картинки/видео. Если пусто — подпись не добавляется.</div>
+        {{ form.visual_footer(class="form-control mb-2", id="field-visual-footer") }}
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <input class="form-control" style="max-width:420px" type="file" id="field-footer-uploads" accept=".png,.jpg,.jpeg,.webp,.gif,.svg,.pdf,.txt,.md,image/*" multiple>
+          <button type="button" class="btn btn-outline-dark" id="btn-footer-upload">Добавить файл подписи</button>
+        </div>
+        <div class="form-text">Можно загрузить логотип (png/jpg) или текстовый образец подписи</div>
+        <ul class="material-list mt-2" id="list-footer-files">
+          {% for f in bag_footer_files %}
+          <li data-id="{{ f.id }}">
+            <span class="material-list__title">{{ f.name }}</span>
+            <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-footer" data-id="{{ f.id }}">убрать</button>
+          </li>
+          {% else %}
+          <li class="text-muted empty-hint" id="footer-files-empty">Файлы подписи ещё не загружены</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label fw-semibold">Веб-поиск по теме</label>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <button type="button" class="btn btn-accent" id="btn-web-search">Веб-поиск</button>
+          <span class="text-muted small" id="search-status"></span>
+        </div>
+        <div class="form-text">Использует тему поста и подсказку канала{% if workspace.search_hint %}: «{{ workspace.search_hint }}»{% endif %}</div>
+        <ul class="material-list mt-2" id="list-search">
+          {% for s in bag_search %}
+          <li data-id="{{ s.id }}">
+            <span class="material-list__title">
+              {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title }}</a>{% else %}{{ s.title }}{% endif %}
+            </span>
+            {% if s.snippet %}<div class="material-list__snippet">{{ s.snippet }}</div>{% endif %}
+            <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-search" data-id="{{ s.id }}">убрать</button>
+          </li>
+          {% else %}
+          <li class="text-muted empty-hint" id="search-empty">Результаты поиска появятся здесь</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="col-12">
+        {{ form.materials.label(class="form-label fw-semibold") }}
+        <div class="form-text mb-1">Собирается автоматически из загруженных файлов и веб-поиска. Можно править вручную.</div>
+        {{ form.materials(class="form-control", id="field-materials") }}
+        {% if form.materials.errors %}
+          <div class="text-danger small">{{ form.materials.errors[0] }}</div>
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="btn-refresh-summary">Обновить саммари из списков</button>
+      </div>
+
+      <div class="col-12">
+        {{ form.sources_note.label(class="form-label") }}
+        {{ form.sources_note(class="form-control") }}
+      </div>
+
+      <div class="col-12">
+        <div class="form-check">{{ form.enable_relevance(class="form-check-input") }} {{ form.enable_relevance.label(class="form-check-label") }}</div>
+        <div class="form-check">{{ form.generate_image(class="form-check-input") }} {{ form.generate_image.label(class="form-check-label") }}</div>
+        <div class="form-check">{{ form.generate_video(class="form-check-input") }} {{ form.generate_video.label(class="form-check-label") }}</div>
+        <div class="form-text ms-4 mb-2">Видео через Kling занимает 2–6 минут. Ход работы будет виден на экране прогресса.</div>
+        <div class="form-check">{{ form.cta(class="form-check-input") }} {{ form.cta.label(class="form-check-label") }}</div>
+      </div>
+      <div class="col-12">
+        {{ form.submit(class="btn btn-accent", id="btn-generate") }}
+        <span class="text-muted ms-2 small">После нажатия откроется окно прогресса.</span>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if last_relevance %}
+<div class="panel mt-3">
+  <h2 class="h6">Последний отчёт актуальности</h2>
+  <pre class="small mb-0">{{ last_relevance }}</pre>
+</div>
+{% endif %}
+
+{# --- Окно прогресса --- #}
+<div id="progress-overlay" class="progress-overlay d-none" aria-live="polite">
+  <div class="progress-card">
+    <div class="spinner-border text-dark mb-3" role="status" id="progress-spinner"></div>
+    <h2 class="h5 mb-2" id="progress-title">Идёт генерация…</h2>
+    <p class="mb-3" id="progress-message">Подготовка</p>
+    <div class="progress mb-3" style="height: 12px;">
+      <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning" style="width: 2%"></div>
+    </div>
+    <p class="small text-muted mb-2" id="progress-hint">Не закрывайте вкладку, пока идёт работа.</p>
+    <ul class="small text-muted mb-0 ps-3" id="progress-log" style="max-height:120px;overflow:auto"></ul>
+    <div id="progress-warning-box" class="alert alert-warning mt-3 d-none mb-0"></div>
+    <div id="progress-error-box" class="alert alert-danger mt-3 d-none mb-0"></div>
+    <button type="button" class="btn btn-accent mt-3 d-none" id="progress-approve">Утвердить и продолжить</button>
+    <button type="button" class="btn btn-outline-dark mt-3 d-none" id="progress-close">Закрыть</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+  const topicEl = document.getElementById("field-topic");
+  const materialsEl = document.getElementById("field-materials");
+  const filesList = document.getElementById("list-files");
+  const searchList = document.getElementById("list-search");
+  const searchStatus = document.getElementById("search-status");
+  const form = document.getElementById("generate-form");
+  const overlay = document.getElementById("progress-overlay");
+  const progressBar = document.getElementById("progress-bar");
+  const progressMessage = document.getElementById("progress-message");
+  const progressTitle = document.getElementById("progress-title");
+  const progressError = document.getElementById("progress-error-box");
+  const progressWarning = document.getElementById("progress-warning-box");
+  const progressClose = document.getElementById("progress-close");
+  const progressApprove = document.getElementById("progress-approve");
+  const progressSpinner = document.getElementById("progress-spinner");
+  const progressHint = document.getElementById("progress-hint");
+  const progressLog = document.getElementById("progress-log");
+  const genError = document.getElementById("gen-error");
+  const genWarning = document.getElementById("gen-warning");
+  const btnGenerate = document.getElementById("btn-generate");
+
+  let pollTimer = null;
+  let currentJobId = null;
+
+  function topic() { return (topicEl?.value || "").trim(); }
+
+  function setSummary(text) {
+    if (materialsEl && typeof text === "string") materialsEl.value = text;
+  }
+
+  function showPageError(msg) {
+    if (!genError) return;
+    genError.textContent = msg;
+    genError.classList.remove("d-none");
+  }
+  function hidePageError() {
+    genError?.classList.add("d-none");
+  }
+  function showPageWarning(msg) {
+    if (!genWarning) return;
+    genWarning.textContent = msg;
+    genWarning.classList.remove("d-none");
+  }
+  function hidePageWarning() {
+    genWarning?.classList.add("d-none");
+  }
+
+  function renderFiles(files) {
+    if (!filesList) return;
+    if (!files || !files.length) {
+      filesList.innerHTML = '<li class="text-muted empty-hint">Файлы ещё не загружены</li>';
+      return;
+    }
+    filesList.innerHTML = files.map(f => `
+      <li data-id="${f.id}">
+        <span class="material-list__title">${escapeHtml(f.name)}</span>
+        <span class="material-list__meta">${f.chars || 0} симв.</span>
+        <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-file" data-id="${f.id}">убрать</button>
+      </li>`).join("");
+  }
+
+  function renderSearch(items) {
+    if (!searchList) return;
+    if (!items || !items.length) {
+      searchList.innerHTML = '<li class="text-muted empty-hint">Результаты поиска появятся здесь</li>';
+      return;
+    }
+    searchList.innerHTML = items.map(s => {
+      const title = s.url
+        ? `<a href="${escapeAttr(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title || "")}</a>`
+        : escapeHtml(s.title || "");
+      const snip = s.snippet ? `<div class="material-list__snippet">${escapeHtml(s.snippet)}</div>` : "";
+      return `<li data-id="${s.id}">
+        <span class="material-list__title">${title}</span>
+        ${snip}
+        <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-search" data-id="${s.id}">убрать</button>
+      </li>`;
+    }).join("");
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function escapeAttr(str) {
+    return escapeHtml(str).replace(/'/g, "&#39;");
+  }
+
+  async function postJson(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrf,
+      },
+      body: JSON.stringify(body || {}),
+    });
+    return res.json();
+  }
+
+  function openProgress() {
+    overlay?.classList.remove("d-none");
+    progressError?.classList.add("d-none");
+    progressWarning?.classList.add("d-none");
+    progressClose?.classList.add("d-none");
+    progressApprove?.classList.add("d-none");
+    progressSpinner?.classList.remove("d-none");
+    progressTitle.textContent = "Идёт генерация…";
+    progressMessage.textContent = "Запуск…";
+    progressBar.style.width = "3%";
+    progressBar.classList.add("progress-bar-animated");
+    progressBar.classList.remove("bg-danger");
+    progressBar.classList.add("bg-warning");
+    if (progressHint) progressHint.textContent = "Не закрывайте вкладку, пока идёт работа.";
+    if (progressLog) progressLog.innerHTML = "";
+    if (btnGenerate) btnGenerate.disabled = true;
+  }
+
+  const VISUAL_STEPS = new Set(["visual_prepare", "image_gpt_image_2", "video_kling"]);
+
+  function renderProgressLog(job) {
+    if (!progressLog || !Array.isArray(job.log)) return;
+    progressLog.innerHTML = job.log.slice(-6).map((item) => {
+      const msg = item.message || item.step || "";
+      return `<li>${msg}</li>`;
+    }).join("");
+  }
+
+  function updateVisualHint(step) {
+    if (!progressHint) return;
+    if (step === "visual_prepare" || step === "image_gpt_image_2" || step === "video_kling") {
+      progressHint.textContent = "Идёт генерация визуала. Это может занять несколько минут — не закрывайте вкладку.";
+    } else {
+      progressHint.textContent = "Не закрывайте вкладку, пока идёт работа.";
+    }
+  }
+
+  function closeProgress() {
+    overlay?.classList.add("d-none");
+    if (btnGenerate) btnGenerate.disabled = false;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function showProgressError(msg) {
+    progressTitle.textContent = "Ошибка";
+    progressMessage.textContent = "Генерация остановлена";
+    progressBar.style.width = "100%";
+    progressBar.classList.remove("progress-bar-animated", "bg-warning");
+    progressBar.classList.add("bg-danger");
+    progressSpinner?.classList.add("d-none");
+    progressWarning?.classList.add("d-none");
+    if (progressError) {
+      progressError.textContent = msg;
+      progressError.classList.remove("d-none");
+    }
+    progressClose?.classList.remove("d-none");
+    if (btnGenerate) btnGenerate.disabled = false;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function showProgressApproval(job) {
+    currentJobId = job.id || currentJobId;
+    progressTitle.textContent = "Нужно подтверждение";
+    progressMessage.textContent = "Агент актуальности нашёл сомнительные места";
+    progressBar.style.width = Math.max(18, Number(job.percent) || 18) + "%";
+    progressBar.classList.remove("progress-bar-animated", "bg-danger");
+    progressBar.classList.add("bg-warning");
+    progressSpinner?.classList.add("d-none");
+    progressError?.classList.add("d-none");
+    if (progressWarning) {
+      progressWarning.textContent = job.warning || job.message || "Проверьте замечание и подтвердите продолжение.";
+      progressWarning.classList.remove("d-none");
+    }
+    if (progressHint) {
+      progressHint.textContent = "Генерация не отменена. Можно утвердить и продолжить.";
+    }
+    progressApprove?.classList.remove("d-none");
+    progressClose?.classList.remove("d-none");
+    showPageWarning(job.warning || "Агент актуальности просит подтверждение.");
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  progressClose?.addEventListener("click", closeProgress);
+  progressApprove?.addEventListener("click", async () => {
+    if (!currentJobId) return;
+    progressApprove.disabled = true;
+    try {
+      const res = await fetch("{{ url_for('smm.generate_job_approve', job_id='JOB_ID') }}".replace("JOB_ID", currentJobId), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        showProgressError(data.error || "Не удалось продолжить генерацию");
+        return;
+      }
+      hidePageWarning();
+      progressWarning?.classList.add("d-none");
+      progressApprove?.classList.add("d-none");
+      progressClose?.classList.add("d-none");
+      progressSpinner?.classList.remove("d-none");
+      progressTitle.textContent = "Идёт генерация…";
+      progressMessage.textContent = "Продолжаем после подтверждения…";
+      progressBar.style.width = "3%";
+      progressBar.classList.add("progress-bar-animated");
+      currentJobId = data.job_id || currentJobId;
+      pollJob(currentJobId);
+    } catch (err) {
+      showProgressError(String(err));
+    } finally {
+      progressApprove.disabled = false;
+    }
+  });
+
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hidePageError();
+    hidePageWarning();
+
+    const materials = (materialsEl?.value || "").trim();
+    if (materials.length < 10) {
+      showPageError("Саммари пустое. Загрузите файлы, сделайте веб-поиск или впишите тезисы.");
+      return;
+    }
+
+    openProgress();
+    try {
+      const fd = new FormData(form);
+      const res = await fetch("{{ url_for('smm.generate_start') }}", {
+        method: "POST",
+        body: fd,
+        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+      });
+      const data = await res.json();
+      if (!data.ok || !data.job_id) {
+        showProgressError(data.error || "Не удалось запустить генерацию");
+        showPageError(data.error || "Не удалось запустить генерацию");
+        return;
+      }
+      currentJobId = data.job_id;
+      pollJob(data.job_id);
+    } catch (err) {
+      showProgressError(String(err));
+      showPageError(String(err));
+    }
+  });
+
+  function pollJob(jobId) {
+    currentJobId = jobId;
+    const statusUrl = "{{ url_for('smm.generate_job_status', job_id='JOB_ID') }}".replace("JOB_ID", jobId);
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(statusUrl);
+        const data = await res.json();
+        if (!data.ok || !data.job) {
+          if (res.status === 404) {
+            showProgressError("Задание не найдено. Возможно, сервер перезапускали — запустите генерацию ещё раз.");
+            showPageError("Задание потеряно после перезапуска сервера. Нажмите «Сгенерировать» снова.");
+          }
+          return;
+        }
+        const job = data.job;
+        progressMessage.textContent = job.message || job.step || "Работаем…";
+        progressBar.style.width = Math.max(3, Number(job.percent) || 3) + "%";
+        renderProgressLog(job);
+        updateVisualHint(job.step || "");
+        if (VISUAL_STEPS.has(job.step || "")) {
+          progressSpinner?.classList.remove("d-none");
+        }
+
+        if (job.status === "error") {
+          showProgressError(job.error || "Неизвестная ошибка генерации");
+          showPageError(job.error || "Неизвестная ошибка генерации");
+          return;
+        }
+        if (job.status === "approval_required") {
+          showProgressApproval(job);
+          return;
+        }
+        if (job.status === "done") {
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          progressBar.style.width = "100%";
+          progressBar.classList.remove("progress-bar-animated");
+          progressTitle.textContent = "Готово";
+          progressMessage.textContent = job.warning
+            ? "Текст готов, но визуал не получился — открываем предпросмотр…"
+            : "Черновик готов, открываем предпросмотр…";
+          if (job.warning) {
+            showPageWarning(job.warning);
+            if (progressHint) {
+              progressHint.textContent = "На странице предпросмотра будет указана причина, почему визуал не создан.";
+            }
+          }
+          if (job.draft_id) {
+            setTimeout(() => {
+              window.location.href = "{{ url_for('smm.preview', draft_id=0) }}".replace("/0", "/" + job.draft_id);
+            }, 700);
+          } else {
+            showProgressError("Черновик не создан");
+          }
+        }
+      } catch (err) {
+        // сеть временно — продолжаем опрос
+      }
+    }, 1500);
+  }
+
+  const footerList = document.getElementById("list-footer-files");
+  const footerInput = document.getElementById("field-visual-footer");
+
+  function renderFooterFiles(files) {
+    if (!footerList) return;
+    if (!files || !files.length) {
+      footerList.innerHTML = '<li class="text-muted empty-hint">Файлы подписи ещё не загружены</li>';
+      return;
+    }
+    footerList.innerHTML = files.map(f => `
+      <li data-id="${f.id}">
+        <span class="material-list__title">${escapeHtml(f.name)}</span>
+        <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-remove-footer" data-id="${f.id}">убрать</button>
+      </li>`).join("");
+  }
+
+  let footerSaveTimer = null;
+  footerInput?.addEventListener("input", () => {
+    if (footerSaveTimer) clearTimeout(footerSaveTimer);
+    footerSaveTimer = setTimeout(async () => {
+      const data = await postJson("{{ url_for('smm.generate_footer_text') }}", {
+        visual_footer: footerInput.value || "",
+        topic: topic(),
+      });
+      if (data.ok) setSummary(data.summary);
+    }, 500);
+  });
+
+  document.getElementById("btn-footer-upload")?.addEventListener("click", async () => {
+    const input = document.getElementById("field-footer-uploads");
+    if (!input?.files?.length) {
+      showPageError("Выберите файл подписи: png, jpg, svg, pdf или txt");
+      return;
+    }
+    hidePageError();
+    const fd = new FormData();
+    fd.append("csrf_token", csrf);
+    fd.append("topic", topic());
+    fd.append("visual_footer", footerInput?.value || "");
+    for (const file of input.files) fd.append("footer_uploads", file);
+    const res = await fetch("{{ url_for('smm.generate_footer_upload') }}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrf },
+    });
+    let data = {};
+    try { data = await res.json(); } catch (_) { data = {}; }
+    if (!res.ok || !data.ok) {
+      showPageError(data.error || "Ошибка загрузки файла подписи");
+      return;
+    }
+    renderFooterFiles(data.footer_files);
+    setSummary(data.summary);
+    input.value = "";
+  });
+
+  footerList?.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-remove-footer");
+    if (!btn) return;
+    const data = await postJson("{{ url_for('smm.generate_footer_remove') }}", {
+      id: btn.dataset.id,
+      topic: topic(),
+    });
+    if (data.ok) {
+      renderFooterFiles(data.footer_files);
+      setSummary(data.summary);
+    }
+  });
+
+  document.getElementById("btn-upload")?.addEventListener("click", async () => {
+    const input = document.getElementById("field-uploads");
+    if (!input?.files?.length) {
+      showPageError("Выберите файлы: Word, PDF, Excel, txt или md");
+      return;
+    }
+    hidePageError();
+    const fd = new FormData();
+    fd.append("csrf_token", csrf);
+    fd.append("topic", topic());
+    for (const file of input.files) fd.append("uploads", file);
+    const res = await fetch("{{ url_for('smm.generate_upload') }}", { method: "POST", body: fd, headers: { "X-CSRFToken": csrf } });
+    let data = {};
+    try { data = await res.json(); } catch (_) { data = {}; }
+    if (!res.ok || !data.ok) {
+      showPageError(data.error || ("Ошибка загрузки (код " + res.status + "). Для Word используйте .docx"));
+      return;
+    }
+    renderFiles(data.files);
+    renderSearch(data.search);
+    setSummary(data.summary);
+    input.value = "";
+  });
+
+  document.getElementById("btn-web-search")?.addEventListener("click", async () => {
+    if (topic().length < 3) {
+      showPageError("Сначала заполните поле «Тема»");
+      return;
+    }
+    hidePageError();
+    searchStatus.textContent = "Ищем…";
+    const data = await postJson("{{ url_for('smm.generate_web_search') }}", { topic: topic() });
+    if (!data.ok) {
+      searchStatus.textContent = "";
+      showPageError(data.error || "Ошибка поиска");
+      return;
+    }
+    renderFiles(data.files);
+    renderSearch(data.search);
+    setSummary(data.summary);
+    searchStatus.textContent = data.added_count ? `Добавлено: ${data.added_count}` : "Новых ссылок нет";
+  });
+
+  document.getElementById("btn-refresh-summary")?.addEventListener("click", async () => {
+    const data = await postJson("{{ url_for('smm.generate_refresh_summary') }}", { topic: topic() });
+    if (data.ok) setSummary(data.summary);
+  });
+
+  filesList?.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-remove-file");
+    if (!btn) return;
+    const data = await postJson("{{ url_for('smm.generate_remove_file') }}", { id: btn.dataset.id, topic: topic() });
+    if (data.ok) { renderFiles(data.files); renderSearch(data.search); setSummary(data.summary); }
+  });
+
+  searchList?.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-remove-search");
+    if (!btn) return;
+    const data = await postJson("{{ url_for('smm.generate_remove_search') }}", { id: btn.dataset.id, topic: topic() });
+    if (data.ok) { renderFiles(data.files); renderSearch(data.search); setSummary(data.summary); }
+  });
+})();
+</script>
+{% endblock %}

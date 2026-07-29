@@ -1,0 +1,251 @@
+"""Визуальный стиль канала: промпт и референсные картинки."""
+from __future__ import annotations
+
+import base64
+import json
+import sys
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import run_agent as agent  # noqa: E402
+
+if TYPE_CHECKING:
+    from webapp.models import Workspace
+
+REF_ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MAX_REFERENCES = 8
+MAX_REFERENCES_FOR_AI = 4
+MIME_BY_EXT = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
+
+def detect_image_media_type(file_path: Path) -> str | None:
+    """Определяет MIME по содержимому файла, а не только по расширению."""
+    try:
+        header = file_path.read_bytes()[:16]
+    except OSError:
+        return None
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if header.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if header[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if header.startswith(b"RIFF") and header[8:12] == b"WEBP":
+        return "image/webp"
+    return MIME_BY_EXT.get(file_path.suffix.lower())
+
+
+def load_reference_images(workspace: Workspace) -> list[dict]:
+    raw = (getattr(workspace, "reference_images_json", None) or "").strip()
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict) and item.get("path")]
+
+
+def save_reference_images(workspace: Workspace, items: list[dict]) -> None:
+    workspace.reference_images_json = json.dumps(items[:MAX_REFERENCES], ensure_ascii=False)
+
+
+def reference_upload_dir(upload_root: Path, user_id: int, workspace_id: int) -> Path:
+    path = upload_root / str(user_id) / "workspace" / str(workspace_id) / "refs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def add_reference_image(
+    workspace: Workspace,
+    *,
+    name: str,
+    relative_path: str,
+) -> dict:
+    items = load_reference_images(workspace)
+    if len(items) >= MAX_REFERENCES:
+        raise ValueError(f"Можно сохранить не больше {MAX_REFERENCES} референсов на канал.")
+    item = {
+        "id": f"ref_{int(time.time() * 1000)}",
+        "name": name,
+        "path": relative_path,
+    }
+    items.append(item)
+    save_reference_images(workspace, items)
+    return item
+
+
+def remove_reference_image(workspace: Workspace, ref_id: str) -> dict | None:
+    items = load_reference_images(workspace)
+    removed = None
+    kept: list[dict] = []
+    for item in items:
+        if item.get("id") == ref_id and removed is None:
+            removed = item
+        else:
+            kept.append(item)
+    if removed:
+        save_reference_images(workspace, kept)
+    return removed
+
+
+def build_media_urls(user_id: int, refs: list[dict]) -> list[str]:
+    """Публичные URL загруженных референсов (для KIE и промпта)."""
+    from flask import url_for
+
+    urls: list[str] = []
+    for ref in refs[:MAX_REFERENCES]:
+        rel = (ref.get("path") or "").strip()
+        if not rel:
+            continue
+        urls.append(url_for("smm.media_file", user_id=user_id, filename=rel, _external=True))
+    return urls
+
+
+def reference_names_summary(refs: list[dict]) -> str:
+    names = [(r.get("name") or "референс").strip() for r in refs[:MAX_REFERENCES]]
+    return ", ".join(n for n in names if n)
+
+
+def load_reference_images_b64(
+    upload_root: Path,
+    user_id: int,
+    refs: list[dict],
+    *,
+    max_count: int = MAX_REFERENCES_FOR_AI,
+) -> list[dict]:
+    """Читает референсы с диска для vision-запроса к Claude."""
+    out: list[dict] = []
+    for ref in refs[:max_count]:
+        rel = (ref.get("path") or "").strip()
+        if not rel:
+            continue
+        file_path = upload_root / str(user_id) / rel
+        if not file_path.is_file():
+            continue
+        media_type = detect_image_media_type(file_path)
+        if not media_type:
+            continue
+        out.append(
+            {
+                "name": (ref.get("name") or file_path.name).strip(),
+                "media_type": media_type,
+                "data_b64": base64.standard_b64encode(file_path.read_bytes()).decode("ascii"),
+            }
+        )
+    return out
+
+
+def build_style_preview_prompt(
+    *,
+    name: str,
+    theme: str = "",
+    description: str = "",
+    visual_style_prompt: str = "",
+    brand_site: str = "",
+) -> str:
+    """Промпт для тестовой картинки стиля канала (не привязан к посту)."""
+    footer = (brand_site or "").strip()
+    footer_line = (
+        f"Подпись внизу по центру маленьким текстом: «{footer}».\n"
+        if footer
+        else "Подпись внизу не добавлять.\n"
+    )
+    return (
+        "Тестовая инфографика для проверки фирменного стиля VK-канала.\n"
+        "Это не пост — покажи типичный визуальный кадр канала.\n\n"
+        f"Канал: {name or 'канал'}\n"
+        f"Тематика: {theme or 'не указана'}\n"
+        f"Описание: {description or 'не указано'}\n\n"
+        "Обязательный стиль канала:\n"
+        f"{(visual_style_prompt or '').strip() or 'аккуратная инфографика, светлый фон, крупная кириллица'}\n\n"
+        "Композиция примера:\n"
+        "1. Заголовок вверху: «Пример оформления канала»\n"
+        "2. Одна короткая строка по центру: «Так будут выглядеть ваши посты»\n"
+        "3. Минимум элементов, без лишнего текста\n\n"
+        f"{footer_line}"
+        "Формат 4:5. Все смысловые надписи только кириллицей, каждую фразу в «ёлочках». "
+        "Крупный рубленый шрифт, высокий контраст, без латиницы в надписях."
+    )
+
+
+def generate_style_preview_image(
+    *,
+    name: str,
+    theme: str = "",
+    description: str = "",
+    visual_style_prompt: str = "",
+    brand_site: str = "",
+    reference_image_urls: list[str] | None = None,
+    on_progress=None,
+) -> str:
+    style = (visual_style_prompt or "").strip()
+    if len(style) < 10:
+        raise ValueError(
+            "Сначала заполните промпт визуального стиля (минимум 10 символов) "
+            "или сгенерируйте его кнопкой «ИИ генерация»."
+        )
+    if len((name or "").strip()) < 2:
+        raise ValueError("Укажите название канала.")
+
+    if on_progress:
+        try:
+            on_progress("visual_prepare", "Генерация примера стиля…")
+        except Exception:
+            pass
+
+    prompt_text = build_style_preview_prompt(
+        name=name.strip(),
+        theme=theme.strip(),
+        description=description.strip(),
+        visual_style_prompt=style,
+        brand_site=brand_site.strip(),
+    )
+    image_vd = {
+        "prompt_text": prompt_text,
+        "aspect_ratio": "4:5",
+        "resolution": "1K",
+        "output_format": "png",
+    }
+    image_vd, vreport = agent.validate_and_prepare_image_visual_data(
+        image_vd, brand_footer=brand_site.strip()
+    )
+    if not vreport.get("is_safe"):
+        raise ValueError(
+            "Промпт примера не прошёл проверку: "
+            + "; ".join(vreport.get("errors") or ["неизвестная ошибка"])
+        )
+
+    if on_progress:
+        try:
+            on_progress("image_gpt_image_2", "Идёт генерация примера…")
+        except Exception:
+            pass
+
+    kie_key = agent.get_api_key()
+    ref_urls = agent.filter_public_reference_urls(reference_image_urls)
+    try:
+        image_url, provider_label = agent.generate_image_url_with_fallback(
+            image_vd,
+            reference_image_urls=ref_urls,
+            kie_key=kie_key,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(str(exc)) from exc
+    if provider_label != agent.KIE_IMAGE_MODEL_LABEL:
+        pass  # пример стиля — без предупреждения в UI
+    return image_url
+
