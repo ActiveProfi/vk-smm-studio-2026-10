@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Резюме и портфолио · Ксения · ActiveProfi</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --ink: #1c1a16;
+      --muted: #5c564c;
+      --line: #d7d0c3;
+      --card: #fffdf8;
+      --accent: #0f6b5c;
+      --accent-soft: #e6f3ef;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, #fff8e8 0%, transparent 45%),
+        radial-gradient(circle at 90% 10%, #e8f5f1 0%, transparent 40%),
+        var(--bg);
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 40px 20px 72px;
+    }
+    header {
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 28px;
+    }
+    .brand {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+      margin: 0 0 10px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 5vw, 40px);
+      line-height: 1.15;
+    }
+    .role {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+    .contacts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      font-size: 15px;
+    }
+    .contacts a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(15, 107, 92, 0.35);
+    }
+    .note {
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    h2 {
+      margin: 36px 0 14px;
+      font-size: 22px;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+    }
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 18px;
+    }
+    .meta {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    li { margin: 4px 0; }
+    .tag {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      margin: 0 6px 10px 0;
+    }
+    .two {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+    }
+    @media (max-width: 760px) {
+      .two { grid-template-columns: 1fr; }
+    }
+    footer {
+      margin-top: 40px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+    @media print {
+      body { background: #fff; }
+      .wrap { padding: 0; }
+      .card { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p class="brand">GROWPILOT AI · АктивПрофи</p>
+      <h1>Ксения Васильевна</h1>
+      <p class="role">Специалист по автоматизации бизнес-процессов с ИИ</p>
+      <div class="contacts">
+        <a href="https://github.com/ActiveProfi" target="_blank" rel="noopener">GitHub · ActiveProfi</a>
+        <a href="https://github.com/ActiveProfi/vk-smm" target="_blank" rel="noopener">Выпускной · vk-smm</a>
+      </div>
+      <p class="note">Перед сдачей добавьте телефон / Telegram / e-mail в текстовые файлы резюме и портфолио.</p>
+    </header>
+
+    <section class="two">
+      <div class="card">
+        <h3>О себе</h3>
+        <p>Более 15 лет опыта с разными видами бизнеса в бухгалтерском обслуживании и понимание процессов компаний. Сейчас собираю практические ИИ-продукты: от идеи и промптов до веб-кабинета, API и результата для клиента.</p>
+      </div>
+      <div class="card">
+        <h3>Фокус</h3>
+        <ul>
+          <li>Автоматизация рутины с LLM и API</li>
+          <li>Мультиагентные сценарии контента</li>
+          <li>Веб-кабинеты и интеграции (VK, HH и др.)</li>
+          <li>Упаковка продукта: тарифы, КП, отчёты</li>
+        </ul>
+      </div>
+    </section>
+
+    <h2>Навыки</h2>
+    <div class="card">
+      <span class="tag">Python</span>
+      <span class="tag">Flask</span>
+      <span class="tag">Промпты / агенты</span>
+      <span class="tag">KIE / VseGPT / Kling</span>
+      <span class="tag">VK API</span>
+      <span class="tag">Make / n8n</span>
+      <span class="tag">GitHub</span>
+      <span class="tag">Streamlit</span>
+      <ul>
+        <li>Промпт-инжиниринг для текста, изображений и видео</li>
+        <li>Интеграция нейросетей через API, безопасное хранение ключей в .env</li>
+        <li>Продуктовая логика: несколько клиентов, согласование, календарь, отчёты</li>
+      </ul>
+    </div>
+
+    <h2>Портфолио</h2>
+    <div class="grid">
+      <article class="card">
+        <span class="tag">Выпускной проект</span>
+        <h3>VK SMM — кабинет агентства для ВКонтакте</h3>
+        <p class="meta"><a href="https://github.com/ActiveProfi/vk-smm">github.com/ActiveProfi/vk-smm</a> · Python, Flask, ИИ API, VK</p>
+        <ul>
+          <li>Несколько каналов клиентов, база знаний и стиль визуала</li>
+          <li>Контент-план, генерация текста / картинки / видео</li>
+          <li>Согласование, календарь, публикация, отчёты, тестовая оплата</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h3>ИИ-прескоринг кандидатов</h3>
+        <p class="meta"><a href="https://github.com/ActiveProfi/prescoring-candidates">github.com/ActiveProfi/prescoring-candidates</a> · Streamlit, HH API</p>
+        <ul>
+          <li>Предварительный отбор кандидатов</li>
+          <li>Интеграция с Google Calendar</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h3>Контент-завод</h3>
+        <p class="meta"><a href="https://github.com/ActiveProfi/dz10-content-factory">github.com/ActiveProfi/dz10-content-factory</a></p>
+        <ul>
+          <li>Пайплайны генерации контента через нейросети и API</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h3>Teacher AI bot</h3>
+        <p class="meta"><a href="https://github.com/ActiveProfi/Teacher_AI_bot">github.com/ActiveProfi/Teacher_AI_bot</a></p>
+        <ul>
+          <li>ИИ-помощник для прикладных сценариев</li>
+        </ul>
+      </article>
+    </div>
+
+    <h2>Образование</h2>
+    <div class="card">
+      <ul>
+        <li>Курс по автоматизации бизнес-решений с помощью ИИ (промпты, агенты, API, Python, no-code)</li>
+        <li>Практический бэкграунд: бухгалтерское обслуживание бизнеса 15+ лет</li>
+      </ul>
+    </div>
+
+    <footer>
+      Файлы для сдачи ДЗ также есть в текстовом виде:
+      «Резюме-Ксения-ActiveProfi.txt» и «Портфолио-ActiveProfi.txt».
+      Материалы выпускного: КП и отчёт в репозитории vk-smm → docs/graduation.
+    </footer>
+  </div>
+</body>
+</html>

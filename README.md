@@ -81,6 +81,9 @@ py -3 run_webapp.py
 
 - [Коммерческое предложение (HTML)](./docs/graduation/КП-VK-SMM.html)
 - [Отчёт о выполнении](./docs/graduation/Отчёт-выпускной-VK-SMM.txt)
+- [Резюме](./docs/graduation/Резюме-Ксения-ActiveProfi.txt)
+- [Портфолио](./docs/graduation/Портфолио-ActiveProfi.txt)
+- [Резюме + портфолио (HTML)](./docs/graduation/Резюме-и-портфолио.html)
 
 ---
 
