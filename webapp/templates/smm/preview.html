@@ -5,8 +5,8 @@
   <div>
     <p class="lk-kicker mb-1">Кабинет агентства</p>
     <h1 class="h3 mb-1">Предпросмотр</h1>
-    <p class="text-muted mb-0">{{ draft.topic }} · <code>{{ draft.post_type }}</code> ·
-      <span class="badge badge-status-{{ draft.status }}">{{ draft.status }}</span>
+    <p class="text-muted mb-0">{{ draft.topic }} · {{ draft.post_type }} ·
+      <span class="badge badge-status-{{ draft.status }}">{{ publish_format_label }}</span>
     </p>
   </div>
   <a class="btn btn-outline-secondary" href="{{ url_for('smm.dashboard') }}">К черновикам</a>
@@ -16,7 +16,11 @@
   <div class="col-lg-7">
     <div class="panel">
       <h2 class="h6 text-muted">Текст поста</h2>
-      <div class="preview-text">{{ draft.post_text | vk_post_html | safe }}</div>
+      <div class="preview-text mb-3">{{ draft.post_text | vk_post_html | safe }}</div>
+      <label class="form-label" for="text-wish">Промпт для текста</label>
+      <textarea class="form-control mb-2" id="text-wish" rows="3" placeholder="Например: короче, добавь призыв записаться. Пусто — обычная перегенерация."></textarea>
+      <button type="button" class="btn btn-accent btn-lg w-100" id="btn-text-regen">Перегенерировать текст</button>
+      <p class="small text-muted mt-2 mb-0">Пожелание учитывается вместе с текущим текстом. Картинка и видео при этом не удаляются.</p>
     </div>
     {% if draft.relevance_report %}
     <div class="panel mt-3">
@@ -38,6 +42,8 @@
         </select>
         <div class="form-text">Текст поста при смене формата не стирается. В ВК уйдёт то, что нужно этому формату.</div>
       </form>
+      <label class="form-label" for="visual-wish">Промпт для визуала</label>
+      <textarea class="form-control mb-2" id="visual-wish" rows="2" placeholder="Например: теплее свет, крупнее чашка. Пусто — обычная генерация."></textarea>
       {% if publish_format == 'animation' %}
       <div class="alert alert-light border small py-2">
         Видео-анимация — короткий ролик Veo 3.1
@@ -47,14 +53,7 @@
       </div>
       <button type="button" class="btn btn-accent w-100 mb-2" id="btn-animation">Сгенерировать видео-анимацию</button>
       {% endif %}
-      <h2 class="h6 text-muted">Визуал</h2>
-      <p class="small text-muted mb-2" id="visual-checkboxes-hint">
-        {% if draft.image_url or draft.video_url %}
-          Галочки ниже — что попадёт в пост при публикации в ВК.
-        {% else %}
-          Отметьте, что создать: картинку, видео или оба варианта.
-        {% endif %}
-      </p>
+      <h2 class="h6 text-muted mt-2">Визуал</h2>
       <div id="preview-image-block" class="{% if not draft.image_url %}d-none{% endif %}">
       {% if draft.image_url %}
         <img src="{{ draft.image_url }}" alt="Превью картинки" id="preview-image">
@@ -106,7 +105,9 @@
             <option value="hailuo">Hailuo 02</option>
           </select>
         </div>
-        <div class="mt-2 border rounded p-2 bg-light" id="video-brief-panel" style="display:none">
+        <details class="mt-2 mb-2">
+          <summary class="small">Подробности ролика: камера, свет, стиль</summary>
+        <div class="mt-2 border rounded p-2 bg-light" id="video-brief-panel">
           <div class="fw-semibold small mb-1">Подсказка для видео</div>
           <p class="small text-muted mb-2">
             Кратко: персонаж, действие, место. Остальное (камера, свет, стиль) — авто или выберите сами.
@@ -152,6 +153,7 @@
             <input class="form-control form-control-sm" id="vb-negative" value="текст, надписи, логотипы, водяной знак">
           </div>
         </div>
+        </details>
         <div id="visual-selection-status" class="small text-muted mt-1"></div>
       </div>
       {% if not draft.image_url and not draft.video_url %}
@@ -160,8 +162,8 @@
       {% else %}
         <button type="button" class="btn btn-outline-dark btn-sm w-100 mb-2" id="btn-visual">Пересоздать визуал</button>
       {% endif %}
-      <div class="border rounded p-3 mb-2">
-        <div class="fw-semibold mb-2">Загрузить свой визуал</div>
+      <details class="border rounded p-3 mb-2">
+        <summary class="fw-semibold mb-2">Загрузить свой визуал</summary>
         <form method="post" enctype="multipart/form-data" action="{{ url_for('smm.preview_upload_visual', draft_id=draft.id) }}">
           {{ publish_form.hidden_tag() }}
           <div class="mb-2">
@@ -175,8 +177,7 @@
           <div class="form-text mb-2">Можно загрузить своё изображение, своё видео или оба файла сразу.</div>
           <button type="submit" class="btn btn-outline-dark btn-sm w-100">Загрузить визуал</button>
         </form>
-      </div>
-      <button type="button" class="btn btn-outline-dark btn-sm w-100 mb-2" id="btn-text-regen">Перегенерировать текст</button>
+      </details>
     </div>
 
     <div class="panel mt-3" style="border-color:#e8b84a!important">
@@ -513,7 +514,7 @@
           "X-CSRFToken": csrf,
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: "{}",
+        body: JSON.stringify({ visual_wish: document.getElementById("visual-wish")?.value || "" }),
       });
       const data = await res.json();
       if (!data.ok || !data.job_id) {
@@ -566,6 +567,7 @@
           generate_video,
           video_provider: document.getElementById("vis-video-provider")?.value || "kling",
           video_brief: collectVideoBrief(),
+          visual_wish: document.getElementById("visual-wish")?.value || "",
         }),
       });
       const data = await res.json();
@@ -602,7 +604,7 @@
           "X-CSRFToken": csrf,
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ text_wish: document.getElementById("text-wish")?.value || "" }),
       });
       const data = await res.json();
       if (!data.ok || !data.job_id) {

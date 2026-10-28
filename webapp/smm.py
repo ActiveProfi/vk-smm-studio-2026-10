@@ -435,6 +435,8 @@ def _run_text_regen_job(app, job_id: str, payload: dict) -> None:
                 reference_image_names=payload.get("reference_image_names") or [],
                 search_hint=payload["search_hint"],
                 marketer_text_guidance=payload.get("marketer_text_guidance") or "",
+                text_revision=payload.get("text_revision") or "",
+                current_post=payload.get("current_post") or "",
                 on_progress=progress,
             )
 
@@ -480,12 +482,14 @@ def _run_text_regen_job(app, job_id: str, payload: dict) -> None:
             d.search_notes = pipeline.get("search_notes") or d.search_notes or ""
             d.agent_answer = pipeline.get("agent_answer") or d.agent_answer or ""
             d.materials_text = payload["materials"]
-            d.image_url = ""
-            d.video_url = ""
-            d.publish_with_image = True
-            d.publish_with_video = False
-            d.generation_warning = "Текст обновлён. Перегенерируйте визуал, чтобы он соответствовал новому тексту."
-            d.status = "draft"
+            d.generation_warning = (
+                "Текст обновлён. Если картинка или видео больше не подходят к тексту, "
+                "перегенерируйте визуал."
+            )
+            if (d.post_text or "").strip() and (d.image_url or d.video_url):
+                d.status = "ready"
+            elif (d.post_text or "").strip():
+                d.status = "draft"
             db.session.commit()
 
             from webapp.services import business as biz
@@ -563,27 +567,69 @@ def dashboard():
             materials_bag.bind_workspace(cand.id)
             ws = cand
     _sync_materials_for_workspace(ws)
-    drafts = (
-        _drafts_for_workspace(ws.id)
-        .order_by(Draft.created_at.desc())
-        .limit(20)
+    from webapp.services import schedule_queue as sq
+    from webapp.services.draft_schedule import is_overdue
+
+    workspaces = list(acc.list_workspaces(current_user, active_only=True))
+    all_drafts = (
+        _drafts_for_workspace()
+        .order_by(Draft.scheduled_for.desc(), Draft.id.desc())
         .all()
     )
-    from webapp.services import schedule_queue as sq
-
-    due_count = len(sq.filter_due_for_generation(drafts))
+    by_ws: dict[int, list] = {}
+    for draft in all_drafts:
+        by_ws.setdefault(int(draft.workspace_id or 0), []).append(draft)
+    channel_groups = []
+    for channel in workspaces:
+        items = by_ws.get(int(channel.id), [])
+        channel_groups.append(
+            {
+                "workspace": channel,
+                "drafts": items,
+                "count": len(items),
+                "overdue": sum(1 for item in items if is_overdue(item)),
+                "ready": sum(1 for item in items if (item.status or "") == sq.STATUS_READY),
+                "published": sum(1 for item in items if (item.status or "") == sq.STATUS_PUBLISHED),
+            }
+        )
+    due_count = len(sq.filter_due_for_generation(by_ws.get(int(ws.id), []) if ws else []))
     from webapp.services import business as biz
 
     return render_template(
         "smm/dashboard.html",
-        drafts=drafts,
+        drafts=by_ws.get(int(ws.id), []) if ws else [],
+        channel_groups=channel_groups,
         workspace=ws,
         due_count=due_count,
         status_label_ru=sq.status_label_ru,
         needs_generation=sq.needs_generation,
         urgency_label=sq.urgency_label,
-        package_status=biz.package_status(ws),
+        is_overdue=is_overdue,
+        format_publish_at=sq.format_publish_at,
+        package_status=biz.package_status(ws) if ws else None,
     )
+
+
+@smm_bp.route("/drafts/<int:draft_id>/return-to-plan", methods=["POST"])
+@login_required
+def return_draft_to_plan(draft_id: int):
+    """Просроченный пост — в активный контент-план с новой датой."""
+    from webapp.services.draft_schedule import return_draft_to_active_plan
+
+    draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
+    try:
+        label = return_draft_to_active_plan(
+            draft,
+            chosen_date=(request.form.get("slot_date") or "").strip(),
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("smm.dashboard"))
+    flash(f"Пост «{draft.topic or 'без темы'}» включён в план. Новая дата: {label}.", "success")
+    return redirect(url_for("smm.dashboard"))
 
 
 @smm_bp.route("/manager")
@@ -1162,6 +1208,7 @@ def preview_visual_start(draft_id: int):
         "generate_video": generate_video,
         "video_provider": (data.get("video_provider") or "kling"),
         "video_brief": _video_brief_from_json(data),
+        "visual_wish": (data.get("visual_wish") or "").strip()[:800],
         **visual_ctx,
     }
     job_id = job_store.create_job(current_user.id, payload)
@@ -1187,6 +1234,7 @@ def preview_visual_start(draft_id: int):
                     reference_image_urls=payload.get("reference_image_urls") or [],
                     reference_image_names=payload.get("reference_image_names") or [],
                     reference_local_files=payload.get("reference_local_files") or [],
+                    visual_wish=payload.get("visual_wish") or "",
                     on_progress=progress,
                 )
                 has_visual = bool(pipeline.get("image_url") or pipeline.get("video_url"))
@@ -1312,15 +1360,19 @@ def preview_text_start(draft_id: int):
         return denied
     workspace = draft.workspace or _active_workspace()
     rubric = _find_rubric(workspace, draft.post_type or "")
-    if not rubric:
-        return jsonify({"ok": False, "error": "Рубрика черновика не найдена в текущем канале."}), 400
-
+    data = request.get_json(silent=True) or {}
+    text_wish = (data.get("text_wish") or "").strip()[:1000]
+    current_text = (draft.post_text or "").strip()
     materials = _restore_materials_from_draft(draft)
-    if len(materials) < 10:
+    if len(materials) < 10 and len(current_text) >= 10:
+        materials = "Текущий текст поста:\n" + current_text
+    if text_wish:
+        materials = (materials or "") + "\n\nПожелание:\n" + text_wish
+    if len((materials or "").strip()) < 10:
         return jsonify(
             {
                 "ok": False,
-                "error": "В черновике нет материалов для перегенерации. Откройте страницу генерации и добавьте материалы.",
+                "error": "Напишите, что изменить в поле «Промпт для текста», или сначала создайте текст поста.",
             }
         ), 400
     if materials != (draft.materials_text or ""):
@@ -1333,10 +1385,13 @@ def preview_text_start(draft_id: int):
         "draft_id": draft.id,
         "workspace_id": workspace.id,
         "topic": draft.topic or "",
-        "post_type": rubric.code,
-        "rubric_title": rubric.title or "",
-        "custom_prompt": rubric.prompt_text or "",
+        "post_type": rubric.code if rubric else (draft.post_type or "expert"),
+        "rubric_title": (rubric.title if rubric else "") or (draft.post_type or ""),
+        "custom_prompt": (rubric.prompt_text if rubric else "")
+        or "Перепиши пост для VK. Чистый текст без markdown.",
         "materials": materials,
+        "text_revision": text_wish,
+        "current_post": current_text,
         "tone": draft.tone or "",
         "sources_note": "материалы пользователя + база знаний канала",
         "enable_relevance": True,
@@ -1557,6 +1612,7 @@ def preview_animation_start(draft_id: int):
         "generate_video": True,
         "video_provider": "veo",
         "video_brief": {},
+        "visual_wish": ((request.get_json(silent=True) or {}).get("visual_wish") or "").strip()[:800],
         "preserve_image": has_image,
         **visual_ctx,
     }
@@ -1588,6 +1644,7 @@ def preview_animation_start(draft_id: int):
                     reference_image_urls=payload.get("reference_image_urls") or [],
                     reference_image_names=payload.get("reference_image_names") or [],
                     reference_local_files=payload.get("reference_local_files") or [],
+                    visual_wish=payload.get("visual_wish") or "",
                     on_progress=progress,
                 )
                 d = db.session.get(Draft, draft_id_copy)

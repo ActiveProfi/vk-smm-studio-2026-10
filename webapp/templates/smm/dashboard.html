@@ -4,68 +4,99 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <p class="lk-kicker mb-1">Кабинет агентства</p>
-    <h1 class="h3 mb-1">Черновики</h1>
-    <p class="text-muted mb-0">Канал: <strong>{{ workspace.name }}</strong>
-      {% if workspace.theme %} · {{ workspace.theme }}{% endif %}
-      {% if package_status and not package_status.unlimited %}
-      · пакет {{ package_status.used }}/{{ package_status.limit }}
-      {% endif %}
-    </p>
+    <h1 class="h3 mb-1">Черновики и публикации</h1>
+    <p class="text-muted mb-0">Посты сгруппированы по каналам. Просроченные можно вернуть в текущий план.</p>
   </div>
   <div class="d-flex flex-wrap gap-2">
-    <a class="btn btn-outline-dark" href="{{ url_for('workspaces.list_workspaces') }}">Сменить канал</a>
     <a class="btn btn-outline-dark" href="{{ url_for('smm.generation_queue') }}">
-      Очередь генерации{% if due_count %} <span class="badge text-bg-warning">{{ due_count }}</span>{% endif %}
+      Очередь{% if due_count %} <span class="badge text-bg-warning">{{ due_count }}</span>{% endif %}
     </a>
-    <a class="btn btn-accent" href="{{ url_for('smm.generate') }}">Начать генерацию</a>
+    <a class="btn btn-accent" href="{{ url_for('smm.generate') }}">Новый пост</a>
   </div>
 </div>
 
-{% if due_count %}
-<div class="alert alert-warning">
-  В этом списке есть посты, которым пора готовить материалы (за сутки до публикации).
-  Откройте <a href="{{ url_for('smm.generation_queue') }}">очередь генерации</a>.
+{% if channel_groups %}
+<ul class="nav nav-pills flex-wrap gap-2 mb-3" role="tablist">
+  {% for group in channel_groups %}
+  {% set ch = group.workspace %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if workspace and ch.id == workspace.id %}active{% endif %}"
+            data-bs-toggle="pill"
+            data-bs-target="#channel-drafts-{{ ch.id }}"
+            type="button"
+            role="tab">
+      {{ ch.name }}
+      <span class="badge text-bg-light text-dark ms-1">{{ group.count }}</span>
+      {% if group.overdue %}<span class="badge text-bg-danger ms-1">{{ group.overdue }} проср.</span>{% endif %}
+    </button>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+  {% for group in channel_groups %}
+  {% set ch = group.workspace %}
+  <div class="tab-pane fade {% if workspace and ch.id == workspace.id %}show active{% endif %}"
+       id="channel-drafts-{{ ch.id }}" role="tabpanel">
+    <p class="small text-muted mb-2">
+      {{ ch.theme or 'без темы' }}
+      · готовы {{ group.ready }}
+      · опубликованы {{ group.published }}
+      · всего {{ group.count }}
+    </p>
+    <div class="panel">
+      {% if group.drafts %}
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Тема</th>
+              <th>Статус</th>
+              <th>Дата</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in group.drafts %}
+            <tr class="{% if is_overdue(d) %}table-warning{% endif %}">
+              <td>
+                {{ d.topic or '—' }}
+                <div class="small text-muted">{{ d.post_type or '' }}</div>
+              </td>
+              <td>
+                <span class="badge badge-status-{{ d.status }}">{{ status_label_ru(d.status) }}</span>
+                {% if is_overdue(d) %}
+                <div class="small text-danger mt-1">просрочено</div>
+                {% elif needs_generation(d) %}
+                <div class="small text-danger mt-1">{{ urgency_label(d) }}</div>
+                {% endif %}
+              </td>
+              <td class="small">{{ format_publish_at(d.scheduled_for) if d.scheduled_for else '—' }}</td>
+              <td class="text-end">
+                <a href="{{ url_for('smm.preview', draft_id=d.id) }}">Открыть</a>
+                {% if is_overdue(d) %}
+                <form method="post" action="{{ url_for('smm.return_draft_to_plan', draft_id=d.id) }}" class="d-inline-flex flex-wrap align-items-center gap-1 mt-1">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="date" name="slot_date" class="form-control form-control-sm" style="width:9.5rem" title="Новая дата, можно оставить пустой">
+                  <button type="submit" class="btn btn-sm btn-accent">Включить в текущий план</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="mb-0 text-muted">В этом канале пока нет постов.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel">
+  <p class="mb-0">Каналов пока нет. Создайте канал, затем соберите контент-план.</p>
 </div>
 {% endif %}
-
-<div class="panel">
-  {% if drafts %}
-  <div class="table-responsive">
-    <table class="table align-middle mb-0">
-      <thead>
-        <tr>
-          <th>Тема</th>
-          <th>Рубрика</th>
-          <th>Статус</th>
-          <th>Календарь</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for d in drafts %}
-        <tr class="{% if needs_generation(d) %}table-warning{% endif %}">
-          <td>{{ d.topic or '—' }}</td>
-          <td><code>{{ d.post_type }}</code></td>
-          <td>
-            <span class="badge badge-status-{{ d.status }}">{{ status_label_ru(d.status) }}</span>
-            {% if needs_generation(d) %}
-            <div class="small text-danger mt-1">{{ urgency_label(d) }}</div>
-            {% endif %}
-          </td>
-          <td>{{ d.scheduled_for or '—' }}</td>
-          <td>
-            <a href="{{ url_for('smm.preview', draft_id=d.id) }}">Открыть</a>
-            {% if not d.image_url and not d.video_url and d.post_text %}
-            · <a href="{{ url_for('smm.preview', draft_id=d.id) }}#visual">догенерировать визуал</a>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p class="mb-0 text-muted">В этом канале пока нет черновиков. Утвердите контент-план или нажмите «Начать генерацию».</p>
-  {% endif %}
-</div>
 {% endblock %}
