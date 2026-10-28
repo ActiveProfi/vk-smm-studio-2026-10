@@ -24,6 +24,8 @@ class User(UserMixin, db.Model):
     plan_updated_at = db.Column(db.String(32), default="")
     plan_channels_note = db.Column(db.String(120), default="")  # текст для теста, напр. «2×business»
     privacy_accepted_at = db.Column(db.String(32), default="")
+    # Версия политики, с которой человек согласился. Если версия сменилась — просим согласие снова.
+    privacy_policy_version = db.Column(db.String(32), default="")
 
     drafts = db.relationship(
         "Draft",
@@ -221,7 +223,12 @@ class ApiUsageLog(db.Model):
 
 
 class SecurityEvent(db.Model):
-    """Журнал безопасности: входы, ошибки, смена команды/тарифа."""
+    """Журнал безопасности: входы, ошибки, смена команды/тарифа.
+
+    ip — только укороченный адрес (не полный). Полный IP не храним.
+    ip_hash — чтобы ограничивать попытки входа, не показывая адрес в журнале.
+    agency_user_id — владелец агентства: чужой журнал этому кабинету не показываем.
+    """
 
     __tablename__ = "security_event"
 
@@ -230,5 +237,7 @@ class SecurityEvent(db.Model):
     kind = db.Column(db.String(64), default="")  # login_ok|login_fail|logout|team_add|...
     username = db.Column(db.String(80), default="")
     ip = db.Column(db.String(64), default="")
+    ip_hash = db.Column(db.String(64), default="", index=True)
     detail = db.Column(db.String(500), default="")
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    agency_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)

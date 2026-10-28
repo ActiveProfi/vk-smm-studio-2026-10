@@ -288,7 +288,7 @@
       const timeVal = timeFromItem(item);
       tr.innerHTML =
         '<td><input class="form-control form-control-sm plan-date" type="date" value="' +
-        (item.date || "") +
+        escapeAttr(item.date || "") +
         '"></td>' +
         '<td><input class="form-control form-control-sm plan-time" type="time" value="' +
         escapeAttr(timeVal) +

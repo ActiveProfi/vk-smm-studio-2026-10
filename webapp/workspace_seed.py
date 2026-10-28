@@ -141,11 +141,23 @@ def ensure_schema() -> None:
             alters.append(ddl)
     if _column_exists("user", "id") and not _column_exists("user", "privacy_accepted_at"):
         alters.append("ALTER TABLE user ADD COLUMN privacy_accepted_at TEXT DEFAULT ''")
+    if _column_exists("user", "id") and not _column_exists("user", "privacy_policy_version"):
+        alters.append("ALTER TABLE user ADD COLUMN privacy_policy_version TEXT DEFAULT ''")
+    if _column_exists("security_event", "id") and not _column_exists("security_event", "ip_hash"):
+        alters.append("ALTER TABLE security_event ADD COLUMN ip_hash TEXT DEFAULT ''")
+    if _column_exists("security_event", "id") and not _column_exists("security_event", "agency_user_id"):
+        alters.append("ALTER TABLE security_event ADD COLUMN agency_user_id INTEGER")
     for stmt in alters:
         db.session.execute(text(stmt))
     if alters:
         db.session.commit()
     _migrate_seal_secrets()
+    try:
+        from webapp.services.security_ops import backfill_events
+
+        backfill_events()
+    except Exception:
+        db.session.rollback()
 
 
 def _migrate_seal_secrets() -> None:

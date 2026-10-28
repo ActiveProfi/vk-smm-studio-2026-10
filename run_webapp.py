@@ -11,7 +11,9 @@ from webapp import create_app
 app = create_app()
 
 if __name__ == "__main__":
-    # host=0.0.0.0 — доступ с других устройств в сети; для локальной работы достаточно 127.0.0.1
-    # use_reloader=False: авто-перезагрузчик убивает фоновые потоки генерации визуала
-    # (задачи зависают навсегда со статусом running).
-    app.run(host="127.0.0.1", port=5050, debug=True, use_reloader=False)
+    import os
+
+    # Отладчик Flask по умолчанию выключен. Для локальной отладки: WEBAPP_DEBUG=1
+    # use_reloader=False: авто-перезагрузчик убивает фоновые потоки генерации визуала.
+    debug = (os.environ.get("WEBAPP_DEBUG") or "").strip().lower() in {"1", "true", "yes", "on"}
+    app.run(host="127.0.0.1", port=5050, debug=debug, use_reloader=False)

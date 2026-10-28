@@ -43,7 +43,7 @@ from flask_login import current_user, login_user
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
 
-from webapp.config import Config
+from webapp.config import PRIVACY_POLICY_VERSION, Config
 from webapp.models import db, bcrypt, User
 from webapp.auth import auth_bp
 from webapp.smm import smm_bp
@@ -82,10 +82,15 @@ def _ensure_dev_user() -> User | None:
     return user
 
 
-def create_app() -> Flask:
+def create_app(test_config: dict | None = None) -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
-    app.config["DEV_SKIP_AUTH"] = _dev_skip_auth_enabled()
+    if test_config:
+        app.config.update(test_config)
+    if test_config and "DEV_SKIP_AUTH" in test_config:
+        app.config["DEV_SKIP_AUTH"] = bool(test_config.get("DEV_SKIP_AUTH"))
+    else:
+        app.config["DEV_SKIP_AUTH"] = _dev_skip_auth_enabled()
 
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
@@ -141,6 +146,33 @@ def create_app() -> Flask:
     def load_user(user_id: str):
         return db.session.get(User, int(user_id))
 
+    @app.after_request
+    def security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        # Скрипты страниц встроены в шаблоны, стили — Bootstrap и Google Fonts.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "img-src 'self' data: blob: https: http:; "
+            "media-src 'self' blob: https: http:; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "connect-src 'self'; "
+            "frame-ancestors 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "object-src 'none'",
+        )
+        if request.endpoint != "static" and getattr(current_user, "is_authenticated", False):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.before_request
     def auto_login_in_dev():
         """На время разработки: сразу «как будто вошли», без формы."""
@@ -155,13 +187,43 @@ def create_app() -> Flask:
             login_user(user, remember=True)
         return None
 
+    @app.before_request
+    def require_privacy_consent():
+        """Без согласия с текущей политикой кабинет не открываем. Удаление данных доступно."""
+        if not current_user.is_authenticated or app.config.get("DEV_SKIP_AUTH"):
+            return None
+        allowed = {
+            "static",
+            "health",
+            "auth.privacy",
+            "auth.accept_privacy",
+            "auth.logout",
+            "auth.account",
+            "auth.export_data",
+            "auth.delete_account",
+            "smm.client_portal",
+        }
+        if request.endpoint in allowed:
+            return None
+        version = (getattr(current_user, "privacy_policy_version", None) or "").strip()
+        accepted = (getattr(current_user, "privacy_accepted_at", None) or "").strip()
+        if version == PRIVACY_POLICY_VERSION and accepted:
+            return None
+        return redirect(url_for("auth.accept_privacy"))
+
     @app.context_processor
     def inject_active_workspace():
         if current_user.is_authenticated:
             ensure_default_workspace_for_user(current_user)
             role = acc.role_for_user(current_user)
+            nav_workspaces = []
+            try:
+                nav_workspaces = list(acc.list_workspaces(current_user, active_only=True).limit(40))
+            except Exception:
+                nav_workspaces = []
             return {
                 "active_workspace": current_user.get_active_workspace(),
+                "nav_workspaces": nav_workspaces,
                 "hide_nav_channel_bind": False,
                 "dev_skip_auth": bool(app.config.get("DEV_SKIP_AUTH")),
                 "user_role": acc.ROLE_LABELS.get(role, role),
@@ -170,6 +232,7 @@ def create_app() -> Flask:
             }
         return {
             "active_workspace": None,
+            "nav_workspaces": [],
             "hide_nav_channel_bind": False,
             "dev_skip_auth": bool(app.config.get("DEV_SKIP_AUTH")),
             "user_role": "",
@@ -191,13 +254,7 @@ def create_app() -> Flask:
 
     @app.route("/health")
     def health():
-        return {
-            "status": "ok",
-            "image_model": Config.DEFAULT_IMAGE_MODEL,
-            "video": Config.DEFAULT_VIDEO_PROVIDER,
-            "multi_workspace": True,
-            "dev_skip_auth": bool(app.config.get("DEV_SKIP_AUTH")),
-        }
+        return {"status": "ok"}
 
     @app.route("/")
     def root():
@@ -214,12 +271,26 @@ def create_app() -> Flask:
 
     with app.app_context():
         ensure_schema()
+        if not app.config.get("TESTING"):
+            try:
+                from webapp.services.security_ops import purge_old_events
 
-    try:
-        from webapp.services.auto_publish_worker import start_auto_publish_worker
+                purge_old_events()
+            except Exception:
+                pass
+            try:
+                from webapp.services.jobs import purge_old_jobs
 
-        start_auto_publish_worker(app)
-    except Exception:
-        pass
+                purge_old_jobs()
+            except Exception:
+                pass
+
+    if not app.config.get("TESTING"):
+        try:
+            from webapp.services.auto_publish_worker import start_auto_publish_worker
+
+            start_auto_publish_worker(app)
+        except Exception:
+            pass
 
     return app

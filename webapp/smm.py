@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import ast
+import re
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import (
     Blueprint,
@@ -31,6 +33,7 @@ from webapp.services import draft_visual as dv
 from webapp.services import workspace_visual as ws_visual
 from webapp.services.extract_text import extract_and_cache, is_allowed_filename, safe_storage_name
 from webapp.services import jobs as job_store
+from webapp.services.http_guard import is_public_http_url, safe_next_url, scrub_secrets
 from webapp.services.pipeline import run_pipeline, run_visual_for_draft
 from webapp.services import video_prompt_skill as video_skill
 from webapp.services import web_search as search_svc
@@ -696,6 +699,9 @@ def generation_queue():
 def generate_upload():
     """Загрузка одного или нескольких файлов в корзину материалов."""
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     files = request.files.getlist("uploads")
     if not files or all(not f.filename for f in files):
@@ -747,6 +753,9 @@ def generate_upload():
 @login_required
 def generate_remove_file():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     file_id = (data.get("id") or request.form.get("id") or "").strip()
@@ -770,12 +779,15 @@ def generate_remove_file():
 def generate_footer_upload():
     """Загрузка файлов-образцов для подписи/логотипа внизу визуала."""
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     files = request.files.getlist("footer_uploads")
     if not files or all(not f.filename for f in files):
         return jsonify({"ok": False, "error": "Файлы не выбраны"}), 400
 
-    allowed = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".pdf", ".txt", ".md"}
+    allowed = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf", ".txt", ".md"}
     upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(current_user.id) / "footer"
     upload_dir.mkdir(parents=True, exist_ok=True)
     added = []
@@ -802,7 +814,7 @@ def generate_footer_upload():
     if not added:
         msg = "Не удалось загрузить файлы."
         if skipped:
-            msg += " Нужны: png, jpg, webp, gif, svg, pdf, txt, md."
+            msg += " Нужны: png, jpg, webp, gif, pdf, txt, md."
         return jsonify({"ok": False, "error": msg}), 400
 
     topic = (request.form.get("topic") or "").strip()
@@ -820,6 +832,9 @@ def generate_footer_upload():
 @login_required
 def generate_footer_remove():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     file_id = (data.get("id") or "").strip()
@@ -840,6 +855,9 @@ def generate_footer_remove():
 @login_required
 def generate_footer_text():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     text = (data.get("visual_footer") or "").strip()
@@ -858,6 +876,9 @@ def generate_footer_text():
 @login_required
 def generate_web_search():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     topic = (data.get("topic") or request.form.get("topic") or "").strip()
@@ -881,6 +902,9 @@ def generate_web_search():
 @login_required
 def generate_remove_search():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     item_id = (data.get("id") or "").strip()
@@ -902,6 +926,9 @@ def generate_remove_search():
 @login_required
 def generate_refresh_summary():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     topic = (data.get("topic") or "").strip()
@@ -1101,6 +1128,9 @@ def generate():
 def preview_visual_start(draft_id: int):
     """Догенерация визуала для существующего черновика — текст не пересоздаём."""
     draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     generate_image = bool(data.get("generate_image", True))
     generate_video = bool(data.get("generate_video", False))
@@ -1252,6 +1282,9 @@ def preview_visual_start(draft_id: int):
 def preview_visual_selection(draft_id: int):
     """Сохранить галочки «что публиковать в VK»."""
     draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     dv.set_publish_flags(
         draft,
@@ -1274,6 +1307,9 @@ def preview_visual_selection(draft_id: int):
 def preview_text_start(draft_id: int):
     """Перегенерация текста прямо из черновика, без возврата на форму генерации."""
     draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
     workspace = draft.workspace or _active_workspace()
     rubric = _find_rubric(workspace, draft.post_type or "")
     if not rubric:
@@ -1320,17 +1356,22 @@ def preview_text_start(draft_id: int):
 @smm_bp.route("/media/<int:user_id>/<path:filename>")
 @login_required
 def media_file(user_id: int, filename: str):
-    # Свои файлы или файлы владельца агентства (для менеджеров команды)
-    if current_user.id != user_id and acc.agency_owner_id(current_user) != user_id:
+    # Свои файлы и файлы коллег того же агентства. Чужое агентство — нет.
+    if not acc.shares_tenant(current_user, user_id):
         return "Доступ запрещён", 403
     base_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(user_id)
-    return send_from_directory(base_dir, filename)
+    # SVG может выполнить скрипт, если открыть файл напрямую.
+    as_attachment = filename.lower().endswith(".svg")
+    return send_from_directory(base_dir, filename, as_attachment=as_attachment)
 
 
 @smm_bp.route("/preview/<int:draft_id>/upload-visual", methods=["POST"])
 @login_required
 def preview_upload_visual(draft_id: int):
     draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
     image_file = request.files.get("image_visual")
     video_file = request.files.get("video_visual")
     allowed_image = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -1389,27 +1430,48 @@ def preview_download_visual(draft_id: int, kind: str):
         flash("Файл для скачивания не найден.", "warning")
         return redirect(url_for("smm.preview", draft_id=draft.id))
 
-    if media_url.startswith("/media/"):
-        prefix = f"/media/{current_user.id}/"
-        filename = media_url[len(prefix):] if media_url.startswith(prefix) else ""
-        if not filename:
-            flash("Не удалось определить локальный файл.", "danger")
-            return redirect(url_for("smm.preview", draft_id=draft.id))
-        base_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(current_user.id)
+    local = re.match(r"^/media/(\d+)/(.+)$", media_url)
+    if local:
+        owner_id = int(local.group(1))
+        filename = local.group(2)
+        if not acc.shares_tenant(current_user, owner_id):
+            abort(403)
+        base_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(owner_id)
         return send_from_directory(base_dir, filename, as_attachment=True)
 
+    # Внешние адреса — только публичный http(s). Внутренние сети и localhost запрещены.
+    if not is_public_http_url(media_url):
+        flash("Скачивание с этого адреса запрещено.", "danger")
+        return redirect(url_for("smm.preview", draft_id=draft.id))
     try:
-        resp = requests.get(media_url, timeout=60)
+        resp = requests.get(media_url, timeout=20, allow_redirects=False, stream=True)
+        if resp.status_code in {301, 302, 303, 307, 308}:
+            flash("Ссылка с переадресацией не скачивается автоматически.", "danger")
+            return redirect(url_for("smm.preview", draft_id=draft.id))
         resp.raise_for_status()
+        max_bytes = 30 * 1024 * 1024
+        buf = BytesIO()
+        total = 0
+        for chunk in resp.iter_content(64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > max_bytes:
+                flash("Файл слишком большой для скачивания через кабинет.", "danger")
+                return redirect(url_for("smm.preview", draft_id=draft.id))
+            buf.write(chunk)
+        buf.seek(0)
     except Exception as exc:  # noqa: BLE001
-        flash(f"Не удалось скачать визуал: {exc}", "danger")
+        flash(f"Не удалось скачать визуал: {scrub_secrets(str(exc))}", "danger")
         return redirect(url_for("smm.preview", draft_id=draft.id))
 
-    ext = Path(media_url).suffix or (".png" if kind == "image" else ".mp4")
+    ext = Path(urlparse(media_url).path).suffix or (".png" if kind == "image" else ".mp4")
     download_name = f"draft-{draft.id}-{kind}{ext}"
     mimetype = resp.headers.get("Content-Type") or ("image/png" if kind == "image" else "video/mp4")
+    if "html" in mimetype.lower() or "javascript" in mimetype.lower():
+        mimetype = "application/octet-stream"
     return send_file(
-        BytesIO(resp.content),
+        buf,
         mimetype=mimetype,
         as_attachment=True,
         download_name=download_name,
@@ -1508,10 +1570,12 @@ def preview(draft_id: int):
             db.session.commit()
             flash(f"Опубликовано в ВК. post_id={draft.vk_post_id}", "success")
         except Exception as exc:  # noqa: BLE001
-            flash(f"Ошибка публикации: {exc}", "danger")
+            flash(f"Ошибка публикации: {scrub_secrets(str(exc))}", "danger")
         return redirect(url_for("smm.preview", draft_id=draft.id))
 
     if request.method == "POST" and action == "schedule" and schedule_form.validate_on_submit():
+        if not _require_perm("content", ws):
+            return redirect(url_for("smm.preview", draft_id=draft.id))
         draft.scheduled_for = getattr(schedule_form, "built_scheduled_for", "") or ""
         draft.status = "ready"
         db.session.commit()
@@ -1678,8 +1742,6 @@ def ads_connect():
     preselect = request.args.get("workspace_id", type=int)
 
     if request.method == "POST":
-        if not _require_perm("ads"):
-            return redirect(url_for("smm.ads_cabinets"))
         try:
             ws_id = int(request.form.get("workspace_id") or 0)
         except (TypeError, ValueError):
@@ -1688,6 +1750,8 @@ def ads_connect():
         if not ws:
             flash("Выберите канал.", "warning")
             return redirect(url_for("smm.ads_connect"))
+        if not _require_perm("workspace_settings", ws):
+            return redirect(url_for("smm.ads_cabinets"))
         client_id = (request.form.get("client_id") or "").strip()
         client_secret = (request.form.get("client_secret") or "").strip()
         account_id = (request.form.get("account_id") or "").strip()
@@ -1713,9 +1777,9 @@ def ads_connect():
         except Exception as exc:  # noqa: BLE001
             db.session.rollback()
             ws.vk_ads_status = "error"
-            ws.vk_ads_last_error = str(exc)[:500]
+            ws.vk_ads_last_error = scrub_secrets(str(exc), limit=500)
             db.session.commit()
-            flash(str(exc), "danger")
+            flash(scrub_secrets(str(exc)), "danger")
             return redirect(url_for("smm.ads_connect", workspace_id=ws.id))
 
     cabinets = {c["workspace_id"]: c for c in ads_pf.list_cabinets(current_user)}
@@ -1972,6 +2036,9 @@ def auto_publish_now(workspace_id: int | None = None):
         ws = acc.get_workspace_or_404(current_user, workspace_id)
     else:
         ws = _active_workspace()
+    denied = acc.guard("publish", ws)
+    if denied:
+        return denied
 
     period = (request.form.get("period") or "today").strip().lower()
     date_from_s = (request.form.get("date_from") or "").strip()
@@ -2004,7 +2071,7 @@ def auto_publish_now(workspace_id: int | None = None):
             flash(msg, "warning")
         else:
             flash(msg, "success")
-    nxt = request.form.get("next") or request.referrer or url_for("smm.manager_panel")
+    nxt = safe_next_url(request.form.get("next"), url_for("smm.manager_panel"))
     return redirect(nxt)
 
 
@@ -2085,6 +2152,9 @@ def client_approvals_to_calendar(workspace_id: int, plan_id: int):
     from webapp.services import business as biz
 
     ws = acc.get_workspace_or_404(current_user, workspace_id)
+    denied = acc.guard("content", ws)
+    if denied:
+        return denied
     plan = ContentPlanBatch.query.filter_by(id=plan_id, workspace_id=ws.id).first_or_404()
     if (plan.client_status or "") != "approved":
         flash("В календарь можно внести только согласованный клиентом план.", "warning")
@@ -2121,6 +2191,9 @@ def client_approvals_regen_link(workspace_id: int):
     from webapp.services import business as biz
 
     ws = acc.get_workspace_or_404(current_user, workspace_id)
+    denied = acc.guard("workspace_settings", ws)
+    if denied:
+        return denied
     biz.regenerate_client_token(ws)
     flash("Ссылка обновлена. Старую ссылку клиенту больше не отправляйте.", "info")
     return redirect(url_for("smm.client_approvals", workspace_id=ws.id))
@@ -2132,10 +2205,23 @@ def client_portal(token: str):
     from webapp.models import ContentPlanBatch, Workspace
     from webapp.services import business as biz
     from webapp.services import schedule_queue as sq
+    from webapp.services import security_ops as sec
 
     token = (token or "").strip()
+    if len(token) < 16:
+        abort(404)
     ws = Workspace.query.filter_by(client_approve_token=token).first_or_404()
     if request.method == "POST":
+        blocked, msg = sec.portal_is_blocked(token)
+        sec.log_event(
+            "client_portal_post",
+            username=sec.portal_marker(token),
+            detail="approve_or_reject",
+            agency_user_id=ws.user_id,
+        )
+        if blocked:
+            flash(msg, "warning")
+            return redirect(url_for("smm.client_portal", token=token))
         plan_id = request.form.get("plan_id", type=int)
         decision = (request.form.get("decision") or "").strip()
         comment = (request.form.get("comment") or "").strip()[:1000]

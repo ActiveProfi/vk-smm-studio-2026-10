@@ -138,6 +138,7 @@
     <a class="btn btn-sm btn-outline-dark manager-go-after-select"
        data-href="{{ url_for('smm.calendar') }}"
        href="{{ url_for('smm.calendar') }}">Календарь</a>
+    {% if can_publish %}
     <form method="post" action="{{ url_for('smm.auto_publish_now', workspace_id=ws.id) }}" class="d-inline-flex flex-wrap align-items-center gap-1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ url_for('smm.manager_panel') }}#channel-{{ ws.id }}">
@@ -149,7 +150,7 @@
       </select>
       <button type="submit" class="btn btn-sm btn-outline-dark">Автопубликация</button>
     </form>
-    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('smm.client_approvals', workspace_id=ws.id) }}">Период…</a>
+    {% endif %}
   </div>
 </div>
 {% endfor %}

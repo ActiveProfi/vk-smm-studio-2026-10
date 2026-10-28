@@ -362,7 +362,7 @@
     if (!progressLog || !Array.isArray(job.log)) return;
     progressLog.innerHTML = job.log.slice(-6).map((item) => {
       const msg = item.message || item.step || "";
-      return `<li>${msg}</li>`;
+      return `<li>${escapeHtml(msg)}</li>`;
     }).join("");
   }
 

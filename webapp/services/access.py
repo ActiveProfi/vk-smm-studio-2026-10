@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from functools import wraps
 
+from werkzeug.exceptions import HTTPException
+
 from flask import abort, flash, redirect, request, url_for
 from flask_login import current_user
 
@@ -115,6 +117,47 @@ def can(user: User, perm: str, workspace: Workspace | None = None) -> bool:
     return perm in _ROLE_PERMS.get(role, set())
 
 
+def tenant_root_ids(user: User | None) -> set[int]:
+    """Идентификаторы «своего» агентства: сам пользователь и владелец, если он сотрудник."""
+    if not user or not getattr(user, "id", None):
+        return set()
+    ids = {int(user.id)}
+    membership = membership_for(user)
+    if membership:
+        ids.add(int(membership.agency_user_id))
+    return ids
+
+
+def shares_tenant(user: User | None, other_user_id: int | None) -> bool:
+    """Один кабинет агентства: свои файлы и файлы коллег, не чужое агентство."""
+    if not user or not other_user_id:
+        return False
+    other_id = int(other_user_id)
+    if int(user.id) == other_id:
+        return True
+    other = db.session.get(User, other_id)
+    if not other:
+        return False
+    return bool(tenant_root_ids(user) & tenant_root_ids(other))
+
+
+def guard(perm: str, workspace: Workspace | None = None):
+    """Если права нет — готовый ответ (JSON или редирект). Если право есть — None."""
+    from flask import flash, jsonify, redirect, request, url_for
+
+    if can(current_user, perm, workspace):
+        return None
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or (request.content_type or "").startswith("application/json")
+        or request.is_json
+    )
+    if wants_json:
+        return jsonify({"ok": False, "error": "Недостаточно прав для этого действия."}), 403
+    flash("Недостаточно прав для этого действия.", "warning")
+    return redirect(url_for("smm.manager_panel"))
+
+
 def can_access_workspace(user: User, workspace: Workspace | None) -> bool:
     if not user or not workspace:
         return False
@@ -194,8 +237,10 @@ def require_perm(perm: str, *, workspace_arg: str | None = "workspace_id"):
             if workspace_arg and workspace_arg in kwargs and kwargs[workspace_arg] is not None:
                 try:
                     ws = get_workspace_or_404(current_user, int(kwargs[workspace_arg]))
-                except Exception:
-                    ws = None
+                except HTTPException:
+                    raise
+                except (TypeError, ValueError):
+                    abort(404)
             if not can(current_user, perm, ws):
                 flash("Недостаточно прав для этого действия.", "warning")
                 if request.accept_mimetypes.best == "application/json" or (

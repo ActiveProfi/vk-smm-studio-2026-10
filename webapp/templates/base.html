@@ -15,39 +15,80 @@
   {% if current_user.is_authenticated %}
   <nav class="navbar navbar-expand-lg navbar-dark app-nav">
     <div class="container">
-      <a class="navbar-brand fw-bold" href="{{ url_for('auth.home') }}" title="На главную">
+      <a class="navbar-brand fw-bold" href="{{ url_for('smm.manager_panel') }}" title="Панель">
         <span class="app-brand-mark">VK</span> SMM
       </a>
-      <div class="navbar-nav ms-auto flex-row gap-2 gap-lg-3 flex-wrap align-items-center">
-        {% if active_workspace and not hide_nav_channel_bind %}
-        <a class="nav-link small py-0 app-nav-channel d-none d-md-inline"
-           href="{{ url_for('workspaces.content_plan', workspace_id=active_workspace.id) }}"
-           title="Контент-план канала">
-          Канал: <strong id="nav-active-channel">{{ active_workspace.name }}</strong>
-        </a>
-        {% elif active_workspace %}
-        <span class="nav-link small py-0 app-nav-channel d-none d-md-inline">
-          Все каналы · <strong id="nav-active-channel">{{ active_workspace.name }}</strong>
-        </span>
-        {% endif %}
-        <a class="nav-link" href="{{ url_for('smm.manager_panel') }}">Панель</a>
-        <a class="nav-link" href="{{ url_for('workspaces.list_workspaces') }}">Каналы</a>
-        {% if active_workspace and not hide_nav_channel_bind %}
-        <a class="nav-link" href="{{ url_for('workspaces.content_plan', workspace_id=active_workspace.id) }}">Контент-план</a>
-        {% endif %}
-        <a class="nav-link" href="{{ url_for('smm.dashboard') }}">Черновики</a>
-        <a class="nav-link" href="{{ url_for('smm.client_approvals') }}">Согласование</a>
-        <a class="nav-link" href="{{ url_for('smm.generation_queue') }}">Очередь</a>
-        <a class="nav-link" href="{{ url_for('smm.generate') }}">Генерация</a>
-        <a class="nav-link" href="{{ url_for('smm.calendar') }}">Календарь</a>
-        <a class="nav-link" href="{{ url_for('smm.month_report') }}">Отчёт</a>
-        <a class="nav-link" href="{{ url_for('smm.stats') }}">Статистика</a>
-        <a class="nav-link" href="{{ url_for('smm.ads_cabinets') }}">Реклама</a>
-        <a class="nav-link" href="{{ url_for('smm.ads_report') }}">Отчёт Ads</a>
-        <a class="nav-link" href="{{ url_for('team.index') }}">Команда</a>
-        <a class="nav-link" href="{{ url_for('auth.security_log') }}">Журнал</a>
-        <a class="nav-link" href="{{ url_for('billing.index') }}">Оплата</a>
-        <a class="nav-link app-nav-logout" href="{{ url_for('auth.logout') }}">Выход</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav"
+              aria-controls="appNav" aria-expanded="false" aria-label="Открыть меню">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="appNav">
+        <div class="navbar-nav me-auto align-items-lg-center">
+          {% if nav_workspaces %}
+          <div class="dropdown nav-client-wrap my-2 my-lg-0 me-lg-2">
+            <button class="btn btn-sm nav-client-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <span id="nav-active-channel">{{ active_workspace.name if active_workspace else 'Выберите клиента' }}</span>
+            </button>
+            <ul class="dropdown-menu">
+              {% for ws in nav_workspaces %}
+              <li>
+                <form method="post" action="{{ url_for('workspaces.select_workspace', workspace_id=ws.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="next" value="content_plan">
+                  <button type="submit" class="dropdown-item{% if active_workspace and active_workspace.id == ws.id %} active{% endif %}">{{ ws.name }}</button>
+                </form>
+              </li>
+              {% endfor %}
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="{{ url_for('workspaces.list_workspaces') }}">Все клиенты</a></li>
+            </ul>
+          </div>
+          {% endif %}
+          <a class="nav-link{% if request.endpoint == 'smm.manager_panel' %} active{% endif %}" href="{{ url_for('smm.manager_panel') }}">Панель</a>
+          <a class="nav-link{% if request.endpoint == 'workspaces.list_workspaces' %} active{% endif %}" href="{{ url_for('workspaces.list_workspaces') }}">Клиенты</a>
+          <div class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Контент</a>
+            <ul class="dropdown-menu">
+              {% if active_workspace %}
+              <li><a class="dropdown-item" href="{{ url_for('workspaces.content_plan', workspace_id=active_workspace.id) }}">Контент-план</a></li>
+              {% endif %}
+              <li><a class="dropdown-item" href="{{ url_for('smm.dashboard') }}">Черновики</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('smm.generate') }}">Генерация</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('smm.generation_queue') }}">Очередь</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('smm.calendar') }}">Календарь</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('smm.client_approvals') }}">Согласование</a></li>
+            </ul>
+          </div>
+          <div class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Аналитика</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('smm.stats') }}">Статистика</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('smm.month_report') }}">Отчёт клиенту</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('smm.ads_cabinets') }}">Реклама</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('smm.ads_report') }}">Отчёт Ads</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="navbar-nav align-items-lg-center">
+          <div class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" title="{{ user_role }}">Кабинет</a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{{ url_for('team.index') }}">Команда</a></li>
+              {% if can_manage_team %}
+              <li><a class="dropdown-item" href="{{ url_for('auth.security_log') }}">Журнал</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('billing.index') }}">Оплата</a></li>
+              {% endif %}
+              <li><a class="dropdown-item" href="{{ url_for('auth.account') }}">Данные и конфиденциальность</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form method="post" action="{{ url_for('auth.logout') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="dropdown-item">Выход</button>
+                </form>
+              </li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   </nav>
@@ -67,5 +108,6 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

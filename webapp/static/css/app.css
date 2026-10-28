@@ -74,6 +74,7 @@ body.portal-shell {
   color: rgba(244, 241, 234, 0.72) !important;
   padding: 0.22rem 0.3rem !important;
   border-radius: 6px;
+  white-space: nowrap;
 }
 
 .app-nav .nav-link:hover {
@@ -94,8 +95,64 @@ body.portal-shell {
   font-weight: 600;
 }
 
-.app-nav-logout {
-  color: rgba(244, 241, 234, 0.5) !important;
+.app-nav .nav-link.active {
+  color: #fff !important;
+  background: rgba(232, 184, 74, 0.18);
+}
+
+.nav-client-btn {
+  background: var(--accent);
+  color: var(--ink);
+  border: 0;
+  font-weight: 700;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-client-btn:hover,
+.nav-client-btn:focus {
+  background: var(--accent-hover);
+  color: var(--ink);
+}
+
+.app-nav .dropdown-menu {
+  background: #1a2332;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 14rem;
+}
+
+.app-nav .dropdown-item {
+  color: #f4f1ea;
+  font-weight: 550;
+}
+
+.app-nav .dropdown-item:hover,
+.app-nav .dropdown-item:focus,
+.app-nav .dropdown-item.active {
+  background: rgba(232, 184, 74, 0.16);
+  color: #fff;
+}
+
+.app-nav .dropdown-divider {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.app-nav .navbar-toggler {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+@media (max-width: 991.98px) {
+  .app-nav .navbar-collapse {
+    padding: 0.4rem 0 0.8rem;
+  }
+  .app-nav .nav-link {
+    padding: 0.45rem 0.2rem !important;
+  }
+  .nav-client-btn {
+    max-width: 100%;
+  }
 }
 
 .panel {

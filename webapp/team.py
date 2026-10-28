@@ -64,9 +64,9 @@ def index():
         member_user = User.query.filter_by(username=username).first()
         created_new = False
         if not member_user:
-            if len(password) < 6:
+            if len(password) < 8:
                 flash(
-                    "Такого логина ещё нет. Укажите пароль (от 6 символов) — создадим аккаунт сотруднику.",
+                    "Такого логина ещё нет. Укажите пароль (от 8 символов) — создадим аккаунт сотруднику.",
                     "warning",
                 )
                 return render_template(

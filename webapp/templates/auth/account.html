@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Данные и конфиденциальность · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет</p>
+    <h1 class="h4 mb-1">Данные и конфиденциальность</h1>
+    <p class="text-muted small mb-0">
+      Согласие: {% if accepted_at %}{{ accepted_at }}{% else %}ещё не сохранено{% endif %}
+      {% if accepted_version %} · версия {{ accepted_version }}{% endif %}
+    </p>
+  </div>
+  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('auth.privacy') }}">Текст политики</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="panel h-100">
+      <h2 class="h6">Скачать свои данные</h2>
+      <p class="small text-muted">Файл JSON: логин, каналы, тексты постов, журнал вашего агентства. Токены ВК в файл не входят.</p>
+      <a class="btn btn-accent" href="{{ url_for('auth.export_data') }}">Скачать JSON</a>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="panel h-100">
+      <h2 class="h6">Удалить кабинет</h2>
+      <p class="small text-muted">Удалятся каналы, черновики, команда этого агентства, журнал и загруженные файлы. Это нельзя отменить.</p>
+      <form method="post" action="{{ url_for('auth.delete_account') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-2">
+          <label class="form-label small" for="delete-password">Пароль</label>
+          <input class="form-control" type="password" name="password" id="delete-password" autocomplete="current-password" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small" for="delete-confirm">Введите слово УДАЛИТЬ</label>
+          <input class="form-control" type="text" name="confirm" id="delete-confirm" autocomplete="off" required>
+        </div>
+        <button type="submit" class="btn btn-outline-danger">Удалить кабинет навсегда</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
