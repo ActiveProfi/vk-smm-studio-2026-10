@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import ast
+import re
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import (
     Blueprint,
@@ -31,6 +33,7 @@ from webapp.services import draft_visual as dv
 from webapp.services import workspace_visual as ws_visual
 from webapp.services.extract_text import extract_and_cache, is_allowed_filename, safe_storage_name
 from webapp.services import jobs as job_store
+from webapp.services.http_guard import is_public_http_url, safe_next_url, scrub_secrets
 from webapp.services.pipeline import run_pipeline, run_visual_for_draft
 from webapp.services import video_prompt_skill as video_skill
 from webapp.services import web_search as search_svc
@@ -432,6 +435,8 @@ def _run_text_regen_job(app, job_id: str, payload: dict) -> None:
                 reference_image_names=payload.get("reference_image_names") or [],
                 search_hint=payload["search_hint"],
                 marketer_text_guidance=payload.get("marketer_text_guidance") or "",
+                text_revision=payload.get("text_revision") or "",
+                current_post=payload.get("current_post") or "",
                 on_progress=progress,
             )
 
@@ -477,12 +482,14 @@ def _run_text_regen_job(app, job_id: str, payload: dict) -> None:
             d.search_notes = pipeline.get("search_notes") or d.search_notes or ""
             d.agent_answer = pipeline.get("agent_answer") or d.agent_answer or ""
             d.materials_text = payload["materials"]
-            d.image_url = ""
-            d.video_url = ""
-            d.publish_with_image = True
-            d.publish_with_video = False
-            d.generation_warning = "Текст обновлён. Перегенерируйте визуал, чтобы он соответствовал новому тексту."
-            d.status = "draft"
+            d.generation_warning = (
+                "Текст обновлён. Если картинка или видео больше не подходят к тексту, "
+                "перегенерируйте визуал."
+            )
+            if (d.post_text or "").strip() and (d.image_url or d.video_url):
+                d.status = "ready"
+            elif (d.post_text or "").strip():
+                d.status = "draft"
             db.session.commit()
 
             from webapp.services import business as biz
@@ -560,27 +567,91 @@ def dashboard():
             materials_bag.bind_workspace(cand.id)
             ws = cand
     _sync_materials_for_workspace(ws)
-    drafts = (
-        _drafts_for_workspace(ws.id)
-        .order_by(Draft.created_at.desc())
-        .limit(20)
+    from webapp.services import schedule_queue as sq
+    from webapp.services.draft_schedule import is_overdue
+
+    workspaces = list(acc.list_workspaces(current_user, active_only=True))
+    all_drafts = (
+        _drafts_for_workspace()
+        .order_by(Draft.scheduled_for.desc(), Draft.id.desc())
         .all()
     )
-    from webapp.services import schedule_queue as sq
-
-    due_count = len(sq.filter_due_for_generation(drafts))
+    by_ws: dict[int, list] = {}
+    for draft in all_drafts:
+        by_ws.setdefault(int(draft.workspace_id or 0), []).append(draft)
+    channel_groups = []
+    for channel in workspaces:
+        items = by_ws.get(int(channel.id), [])
+        channel_groups.append(
+            {
+                "workspace": channel,
+                "drafts": items,
+                "count": len(items),
+                "overdue": sum(1 for item in items if is_overdue(item)),
+                "ready": sum(1 for item in items if (item.status or "") == sq.STATUS_READY),
+                "published": sum(1 for item in items if (item.status or "") == sq.STATUS_PUBLISHED),
+            }
+        )
+    due_count = len(sq.filter_due_for_generation(by_ws.get(int(ws.id), []) if ws else []))
     from webapp.services import business as biz
 
     return render_template(
         "smm/dashboard.html",
-        drafts=drafts,
+        drafts=by_ws.get(int(ws.id), []) if ws else [],
+        channel_groups=channel_groups,
         workspace=ws,
         due_count=due_count,
         status_label_ru=sq.status_label_ru,
         needs_generation=sq.needs_generation,
         urgency_label=sq.urgency_label,
-        package_status=biz.package_status(ws),
+        is_overdue=is_overdue,
+        format_publish_at=sq.format_publish_at,
+        package_status=biz.package_status(ws) if ws else None,
     )
+
+
+@smm_bp.route("/drafts/<int:draft_id>/return-to-plan", methods=["POST"])
+@login_required
+def return_draft_to_plan(draft_id: int):
+    """Просроченный пост — в активный контент-план с новой датой."""
+    from webapp.services.draft_schedule import return_draft_to_active_plan
+
+    draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
+    try:
+        label = return_draft_to_active_plan(
+            draft,
+            chosen_date=(request.form.get("slot_date") or "").strip(),
+        )
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("smm.dashboard"))
+    flash(f"Пост «{draft.topic or 'без темы'}» включён в план. Новая дата: {label}.", "success")
+    return redirect(url_for("smm.dashboard"))
+
+
+@smm_bp.route("/drafts/<int:draft_id>/delete", methods=["POST"])
+@login_required
+def delete_draft(draft_id: int):
+    """Удаляет только запись кабинета. Пост во ВКонтакте не трогаем."""
+    draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
+    published = (draft.status or "") == "published" or bool((draft.vk_post_id or "").strip())
+    topic = draft.topic or "без темы"
+    db.session.delete(draft)
+    db.session.commit()
+    if published:
+        flash(
+            f"Запись «{topic}» убрана из кабинета. Пост во ВКонтакте не удалялся.",
+            "info",
+        )
+    else:
+        flash(f"Черновик «{topic}» удалён.", "info")
+    return redirect(url_for("smm.dashboard"))
 
 
 @smm_bp.route("/manager")
@@ -612,6 +683,9 @@ def manager_panel():
         drafts,
         rubric_counts=rubric_counts,
     )
+    from webapp.services.draft_schedule import is_overdue
+
+    board["totals"]["overdue"] = sum(1 for item in drafts if is_overdue(item))
     from webapp.services import business as biz
 
     package_by_id = {w.id: biz.package_status(w) for w in workspaces}
@@ -696,6 +770,9 @@ def generation_queue():
 def generate_upload():
     """Загрузка одного или нескольких файлов в корзину материалов."""
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     files = request.files.getlist("uploads")
     if not files or all(not f.filename for f in files):
@@ -747,6 +824,9 @@ def generate_upload():
 @login_required
 def generate_remove_file():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     file_id = (data.get("id") or request.form.get("id") or "").strip()
@@ -770,12 +850,15 @@ def generate_remove_file():
 def generate_footer_upload():
     """Загрузка файлов-образцов для подписи/логотипа внизу визуала."""
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     files = request.files.getlist("footer_uploads")
     if not files or all(not f.filename for f in files):
         return jsonify({"ok": False, "error": "Файлы не выбраны"}), 400
 
-    allowed = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".pdf", ".txt", ".md"}
+    allowed = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf", ".txt", ".md"}
     upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(current_user.id) / "footer"
     upload_dir.mkdir(parents=True, exist_ok=True)
     added = []
@@ -802,7 +885,7 @@ def generate_footer_upload():
     if not added:
         msg = "Не удалось загрузить файлы."
         if skipped:
-            msg += " Нужны: png, jpg, webp, gif, svg, pdf, txt, md."
+            msg += " Нужны: png, jpg, webp, gif, pdf, txt, md."
         return jsonify({"ok": False, "error": msg}), 400
 
     topic = (request.form.get("topic") or "").strip()
@@ -820,6 +903,9 @@ def generate_footer_upload():
 @login_required
 def generate_footer_remove():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     file_id = (data.get("id") or "").strip()
@@ -840,6 +926,9 @@ def generate_footer_remove():
 @login_required
 def generate_footer_text():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     text = (data.get("visual_footer") or "").strip()
@@ -858,6 +947,9 @@ def generate_footer_text():
 @login_required
 def generate_web_search():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     topic = (data.get("topic") or request.form.get("topic") or "").strip()
@@ -881,6 +973,9 @@ def generate_web_search():
 @login_required
 def generate_remove_search():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     item_id = (data.get("id") or "").strip()
@@ -902,6 +997,9 @@ def generate_remove_search():
 @login_required
 def generate_refresh_summary():
     ws = _active_workspace()
+    denied = acc.guard("generate", ws)
+    if denied:
+        return denied
     _sync_materials_for_workspace(ws)
     data = request.get_json(silent=True) or {}
     topic = (data.get("topic") or "").strip()
@@ -1101,6 +1199,9 @@ def generate():
 def preview_visual_start(draft_id: int):
     """Догенерация визуала для существующего черновика — текст не пересоздаём."""
     draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     generate_image = bool(data.get("generate_image", True))
     generate_video = bool(data.get("generate_video", False))
@@ -1132,6 +1233,7 @@ def preview_visual_start(draft_id: int):
         "generate_video": generate_video,
         "video_provider": (data.get("video_provider") or "kling"),
         "video_brief": _video_brief_from_json(data),
+        "visual_wish": (data.get("visual_wish") or "").strip()[:800],
         **visual_ctx,
     }
     job_id = job_store.create_job(current_user.id, payload)
@@ -1157,6 +1259,7 @@ def preview_visual_start(draft_id: int):
                     reference_image_urls=payload.get("reference_image_urls") or [],
                     reference_image_names=payload.get("reference_image_names") or [],
                     reference_local_files=payload.get("reference_local_files") or [],
+                    visual_wish=payload.get("visual_wish") or "",
                     on_progress=progress,
                 )
                 has_visual = bool(pipeline.get("image_url") or pipeline.get("video_url"))
@@ -1252,6 +1355,9 @@ def preview_visual_start(draft_id: int):
 def preview_visual_selection(draft_id: int):
     """Сохранить галочки «что публиковать в VK»."""
     draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
     data = request.get_json(silent=True) or {}
     dv.set_publish_flags(
         draft,
@@ -1274,17 +1380,24 @@ def preview_visual_selection(draft_id: int):
 def preview_text_start(draft_id: int):
     """Перегенерация текста прямо из черновика, без возврата на форму генерации."""
     draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
     workspace = draft.workspace or _active_workspace()
     rubric = _find_rubric(workspace, draft.post_type or "")
-    if not rubric:
-        return jsonify({"ok": False, "error": "Рубрика черновика не найдена в текущем канале."}), 400
-
+    data = request.get_json(silent=True) or {}
+    text_wish = (data.get("text_wish") or "").strip()[:1000]
+    current_text = (draft.post_text or "").strip()
     materials = _restore_materials_from_draft(draft)
-    if len(materials) < 10:
+    if len(materials) < 10 and len(current_text) >= 10:
+        materials = "Текущий текст поста:\n" + current_text
+    if text_wish:
+        materials = (materials or "") + "\n\nПожелание:\n" + text_wish
+    if len((materials or "").strip()) < 10:
         return jsonify(
             {
                 "ok": False,
-                "error": "В черновике нет материалов для перегенерации. Откройте страницу генерации и добавьте материалы.",
+                "error": "Напишите, что изменить в поле «Промпт для текста», или сначала создайте текст поста.",
             }
         ), 400
     if materials != (draft.materials_text or ""):
@@ -1297,10 +1410,13 @@ def preview_text_start(draft_id: int):
         "draft_id": draft.id,
         "workspace_id": workspace.id,
         "topic": draft.topic or "",
-        "post_type": rubric.code,
-        "rubric_title": rubric.title or "",
-        "custom_prompt": rubric.prompt_text or "",
+        "post_type": rubric.code if rubric else (draft.post_type or "expert"),
+        "rubric_title": (rubric.title if rubric else "") or (draft.post_type or ""),
+        "custom_prompt": (rubric.prompt_text if rubric else "")
+        or "Перепиши пост для VK. Чистый текст без markdown.",
         "materials": materials,
+        "text_revision": text_wish,
+        "current_post": current_text,
         "tone": draft.tone or "",
         "sources_note": "материалы пользователя + база знаний канала",
         "enable_relevance": True,
@@ -1320,17 +1436,22 @@ def preview_text_start(draft_id: int):
 @smm_bp.route("/media/<int:user_id>/<path:filename>")
 @login_required
 def media_file(user_id: int, filename: str):
-    # Свои файлы или файлы владельца агентства (для менеджеров команды)
-    if current_user.id != user_id and acc.agency_owner_id(current_user) != user_id:
+    # Свои файлы и файлы коллег того же агентства. Чужое агентство — нет.
+    if not acc.shares_tenant(current_user, user_id):
         return "Доступ запрещён", 403
     base_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(user_id)
-    return send_from_directory(base_dir, filename)
+    # SVG может выполнить скрипт, если открыть файл напрямую.
+    as_attachment = filename.lower().endswith(".svg")
+    return send_from_directory(base_dir, filename, as_attachment=as_attachment)
 
 
 @smm_bp.route("/preview/<int:draft_id>/upload-visual", methods=["POST"])
 @login_required
 def preview_upload_visual(draft_id: int):
     draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
     image_file = request.files.get("image_visual")
     video_file = request.files.get("video_visual")
     allowed_image = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -1389,27 +1510,48 @@ def preview_download_visual(draft_id: int, kind: str):
         flash("Файл для скачивания не найден.", "warning")
         return redirect(url_for("smm.preview", draft_id=draft.id))
 
-    if media_url.startswith("/media/"):
-        prefix = f"/media/{current_user.id}/"
-        filename = media_url[len(prefix):] if media_url.startswith(prefix) else ""
-        if not filename:
-            flash("Не удалось определить локальный файл.", "danger")
-            return redirect(url_for("smm.preview", draft_id=draft.id))
-        base_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(current_user.id)
+    local = re.match(r"^/media/(\d+)/(.+)$", media_url)
+    if local:
+        owner_id = int(local.group(1))
+        filename = local.group(2)
+        if not acc.shares_tenant(current_user, owner_id):
+            abort(403)
+        base_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(owner_id)
         return send_from_directory(base_dir, filename, as_attachment=True)
 
+    # Внешние адреса — только публичный http(s). Внутренние сети и localhost запрещены.
+    if not is_public_http_url(media_url):
+        flash("Скачивание с этого адреса запрещено.", "danger")
+        return redirect(url_for("smm.preview", draft_id=draft.id))
     try:
-        resp = requests.get(media_url, timeout=60)
+        resp = requests.get(media_url, timeout=20, allow_redirects=False, stream=True)
+        if resp.status_code in {301, 302, 303, 307, 308}:
+            flash("Ссылка с переадресацией не скачивается автоматически.", "danger")
+            return redirect(url_for("smm.preview", draft_id=draft.id))
         resp.raise_for_status()
+        max_bytes = 30 * 1024 * 1024
+        buf = BytesIO()
+        total = 0
+        for chunk in resp.iter_content(64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > max_bytes:
+                flash("Файл слишком большой для скачивания через кабинет.", "danger")
+                return redirect(url_for("smm.preview", draft_id=draft.id))
+            buf.write(chunk)
+        buf.seek(0)
     except Exception as exc:  # noqa: BLE001
-        flash(f"Не удалось скачать визуал: {exc}", "danger")
+        flash(f"Не удалось скачать визуал: {scrub_secrets(str(exc))}", "danger")
         return redirect(url_for("smm.preview", draft_id=draft.id))
 
-    ext = Path(media_url).suffix or (".png" if kind == "image" else ".mp4")
+    ext = Path(urlparse(media_url).path).suffix or (".png" if kind == "image" else ".mp4")
     download_name = f"draft-{draft.id}-{kind}{ext}"
     mimetype = resp.headers.get("Content-Type") or ("image/png" if kind == "image" else "video/mp4")
+    if "html" in mimetype.lower() or "javascript" in mimetype.lower():
+        mimetype = "application/octet-stream"
     return send_file(
-        BytesIO(resp.content),
+        buf,
         mimetype=mimetype,
         as_attachment=True,
         download_name=download_name,
@@ -1438,6 +1580,169 @@ def preview_visual_full(draft_id: int, kind: str):
         kind=kind,
         media_url=media_url,
     )
+
+
+@smm_bp.route("/preview/<int:draft_id>/format", methods=["POST"])
+@login_required
+def preview_set_format(draft_id: int):
+    """Сменить формат уже созданного поста. Текст не трогаем."""
+    from webapp.services.publish_formats import apply_to_draft, label, normalize_format
+
+    draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
+    kept = draft.post_text or ""
+    code = apply_to_draft(draft, request.form.get("publish_format") or request.args.get("publish_format"))
+    draft.post_text = kept
+    db.session.commit()
+    flash(f"Формат: {label(code)}. Текст поста на месте.", "success")
+    return redirect(url_for("smm.preview", draft_id=draft.id))
+
+
+@smm_bp.route("/preview/<int:draft_id>/animation/start", methods=["POST"])
+@login_required
+def preview_animation_start(draft_id: int):
+    """Короткое видео Veo 3.1: из картинки поста или из текста. Текст не переписываем."""
+    draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
+    if not (draft.post_text or "").strip():
+        return jsonify({"ok": False, "error": "Сначала нужен текст поста. Формат можно сменить, текст не пропадёт."}), 400
+
+    from webapp.services import business as biz
+    from webapp.services.publish_formats import apply_to_draft
+
+    ws = draft.workspace
+    try:
+        if ws:
+            biz.assert_can_use_video(ws)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    kept_text = draft.post_text or ""
+    apply_to_draft(draft, "animation")
+    draft.post_text = kept_text
+    has_image = bool((draft.image_url or "").strip())
+    workspace = draft.workspace
+    brand_footer = (workspace.brand_site if workspace else "") or ""
+    visual_ctx = _workspace_visual_payload(workspace, current_user.id) if workspace else {}
+    payload = {
+        "kind": "animation",
+        "user_id": current_user.id,
+        "workspace_id": workspace.id if workspace else draft.workspace_id,
+        "draft_id": int(draft.id),
+        "generate_image": not has_image,
+        "generate_video": True,
+        "video_provider": "veo",
+        "video_brief": {},
+        "visual_wish": ((request.get_json(silent=True) or {}).get("visual_wish") or "").strip()[:800],
+        "preserve_image": has_image,
+        **visual_ctx,
+    }
+    job_id = job_store.create_job(current_user.id, payload)
+    app = current_app._get_current_object()
+    draft.generation_warning = ""
+    db.session.commit()
+    post_text_copy = kept_text
+    topic_copy = draft.topic or ""
+    agent_answer_copy = draft.agent_answer or ""
+    draft_id_copy = int(draft.id)
+    image_exists = has_image
+
+    def _worker():
+        with app.app_context():
+            progress = job_store.make_progress_callback(job_id)
+            try:
+                progress("visual_prepare", "Готовим видео-анимацию (Veo 3.1)…")
+                pipeline = run_visual_for_draft(
+                    post_text=post_text_copy,
+                    topic=topic_copy,
+                    agent_answer=agent_answer_copy,
+                    generate_image=not image_exists,
+                    generate_video=True,
+                    video_provider="veo",
+                    video_brief={},
+                    brand_site=brand_footer,
+                    visual_style_prompt=payload.get("visual_style_prompt") or "",
+                    reference_image_urls=payload.get("reference_image_urls") or [],
+                    reference_image_names=payload.get("reference_image_names") or [],
+                    reference_local_files=payload.get("reference_local_files") or [],
+                    visual_wish=payload.get("visual_wish") or "",
+                    on_progress=progress,
+                )
+                d = db.session.get(Draft, draft_id_copy)
+                if not d:
+                    job_store.update_job(
+                        job_id, status="error", step="error", message="Черновик не найден", percent=100, error="Черновик не найден"
+                    )
+                    return
+                if pipeline.get("agent_answer"):
+                    d.agent_answer = pipeline["agent_answer"]
+                # Картинку-основу не стираем: из неё собрано видео.
+                dv.apply_pipeline_urls(
+                    d,
+                    pipeline,
+                    generate_image=not image_exists,
+                    generate_video=True,
+                    preserve_image=True,
+                )
+                if image_exists and not pipeline.get("image_url"):
+                    pass
+                apply_to_draft(d, "animation")
+                d.post_text = post_text_copy
+                warning = (pipeline.get("warning") or pipeline.get("error") or "").strip()
+                has_video = bool(pipeline.get("video_url"))
+                d.generation_warning = "" if has_video else (warning or "Видео-анимация не получилась.")
+                if d.post_text and has_video:
+                    d.status = "ready"
+                db.session.commit()
+                if has_video:
+                    biz.safe_log_api_usage(
+                        user_id=payload["user_id"],
+                        workspace_id=payload.get("workspace_id"),
+                        kind="animation",
+                        note=f"анимация #{d.id} veo3",
+                    )
+                    if pipeline.get("image_url") and not image_exists:
+                        biz.safe_log_api_usage(
+                            user_id=payload["user_id"],
+                            workspace_id=payload.get("workspace_id"),
+                            kind="image",
+                            note=f"кадр для анимации #{d.id}",
+                        )
+                if not has_video:
+                    job_store.update_job(
+                        job_id,
+                        status="error",
+                        step="error",
+                        message="Видео-анимация не получилась",
+                        percent=100,
+                        error=d.generation_warning or "Проверьте ключ KIE_API_KEY в .env.",
+                    )
+                    return
+                job_store.update_job(
+                    job_id,
+                    status="done",
+                    step="done",
+                    message="Видео-анимация готова",
+                    percent=100,
+                    draft_id=d.id,
+                    warning=warning,
+                )
+            except Exception as exc:  # noqa: BLE001
+                job_store.update_job(
+                    job_id,
+                    status="error",
+                    step="error",
+                    message="Ошибка видео-анимации",
+                    percent=100,
+                    error=scrub_secrets(str(exc)) or "Не удалось создать видео. Проверьте KIE_API_KEY.",
+                )
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"ok": True, "job_id": job_id})
 
 
 @smm_bp.route("/preview/<int:draft_id>", methods=["GET", "POST"])
@@ -1481,23 +1786,43 @@ def preview(draft_id: int):
             if not ok_plan:
                 flash(plan_err, "warning")
                 return redirect(url_for("smm.preview", draft_id=draft.id))
+        from webapp.services.publish_formats import carousel_urls, normalize_format
+
+        fmt = normalize_format(getattr(draft, "publish_format", "") or "image")
         pub_image = request.form.get("publish_with_image") == "1"
         pub_video = request.form.get("publish_with_video") == "1"
-        dv.set_publish_flags(
-            draft,
-            publish_with_image=pub_image,
-            publish_with_video=pub_video,
-        )
+        if fmt != "text":
+            dv.set_publish_flags(
+                draft,
+                publish_with_image=pub_image,
+                publish_with_video=pub_video,
+            )
         image_url, video_url = dv.resolve_publish_media(draft)
-        if not image_url and not video_url:
+        extras = carousel_urls(draft) if fmt == "carousel" else []
+        if fmt == "text":
+            image_url, video_url, extras = "", "", []
+        elif fmt in {"clip", "animation"} and not video_url:
             db.session.commit()
-            flash("Отметьте картинку или видео для публикации.", "warning")
+            flash(
+                "Для этого формата нужно видео. Нажмите «Сгенерировать видео-анимацию» "
+                "или «Сгенерировать визуал» — текст поста останется.",
+                "warning",
+            )
+            return redirect(url_for("smm.preview", draft_id=draft.id))
+        elif fmt == "carousel" and not image_url and not extras:
+            db.session.commit()
+            flash("Для карусели нужна хотя бы одна картинка. Текст поста сохранён.", "warning")
+            return redirect(url_for("smm.preview", draft_id=draft.id))
+        elif fmt == "image" and not image_url:
+            db.session.commit()
+            flash("Для формата «Текст + картинка» сначала создайте картинку. Текст сохранён.", "warning")
             return redirect(url_for("smm.preview", draft_id=draft.id))
         try:
             resp = vk_client.publish_draft(
                 post_text=draft.post_text,
                 image_url=image_url,
                 video_url=video_url,
+                extra_image_urls=extras,
                 topic=draft.topic,
                 user_token=token,
                 user_group_id=group_id,
@@ -1508,10 +1833,12 @@ def preview(draft_id: int):
             db.session.commit()
             flash(f"Опубликовано в ВК. post_id={draft.vk_post_id}", "success")
         except Exception as exc:  # noqa: BLE001
-            flash(f"Ошибка публикации: {exc}", "danger")
+            flash(f"Ошибка публикации: {scrub_secrets(str(exc))}", "danger")
         return redirect(url_for("smm.preview", draft_id=draft.id))
 
     if request.method == "POST" and action == "schedule" and schedule_form.validate_on_submit():
+        if not _require_perm("content", ws):
+            return redirect(url_for("smm.preview", draft_id=draft.id))
         draft.scheduled_for = getattr(schedule_form, "built_scheduled_for", "") or ""
         draft.status = "ready"
         db.session.commit()
@@ -1536,6 +1863,12 @@ def preview(draft_id: int):
 
     pub_image, pub_video = dv.get_publish_flags(draft)
     from webapp.services import business as biz
+    from webapp.services.publish_formats import (
+        carousel_urls as pf_carousel,
+        choices as pf_choices,
+        label as pf_label,
+        normalize_format as pf_code,
+    )
 
     client_url = ""
     plan_status = ""
@@ -1564,6 +1897,13 @@ def preview(draft_id: int):
         video_camera_choices=video_skill.CAMERA_CHOICES,
         video_light_choices=video_skill.LIGHT_CHOICES,
         video_style_choices=video_skill.STYLE_CHOICES,
+        publish_formats=pf_choices(),
+        publish_format=pf_code(getattr(draft, "publish_format", "") or "image"),
+        publish_format_label=pf_label(getattr(draft, "publish_format", "") or "image"),
+        animation_cost=biz.resolve_unit_cost("animation"),
+        video_allowed=biz.package_allows_video(ws) if ws else True,
+        carousel_count=len(pf_carousel(draft)),
+        carousel_urls=pf_carousel(draft),
     )
 
 
@@ -1639,7 +1979,7 @@ def ads():
 @smm_bp.route("/ads/cabinets")
 @login_required
 def ads_cabinets():
-    """Список рекламных кабинетов: канал → статус → вход в ads.vk.com."""
+    """Список рекламных кабинетов: канал → статус → вход в ads.vk.ru."""
     from webapp.services import ads_portfolio as ads_pf
 
     plan_ok = ads_pf.plan_includes_ads(current_user)
@@ -1678,8 +2018,6 @@ def ads_connect():
     preselect = request.args.get("workspace_id", type=int)
 
     if request.method == "POST":
-        if not _require_perm("ads"):
-            return redirect(url_for("smm.ads_cabinets"))
         try:
             ws_id = int(request.form.get("workspace_id") or 0)
         except (TypeError, ValueError):
@@ -1688,6 +2026,8 @@ def ads_connect():
         if not ws:
             flash("Выберите канал.", "warning")
             return redirect(url_for("smm.ads_connect"))
+        if not _require_perm("workspace_settings", ws):
+            return redirect(url_for("smm.ads_cabinets"))
         client_id = (request.form.get("client_id") or "").strip()
         client_secret = (request.form.get("client_secret") or "").strip()
         account_id = (request.form.get("account_id") or "").strip()
@@ -1713,9 +2053,9 @@ def ads_connect():
         except Exception as exc:  # noqa: BLE001
             db.session.rollback()
             ws.vk_ads_status = "error"
-            ws.vk_ads_last_error = str(exc)[:500]
+            ws.vk_ads_last_error = scrub_secrets(str(exc), limit=500)
             db.session.commit()
-            flash(str(exc), "danger")
+            flash(scrub_secrets(str(exc)), "danger")
             return redirect(url_for("smm.ads_connect", workspace_id=ws.id))
 
     cabinets = {c["workspace_id"]: c for c in ads_pf.list_cabinets(current_user)}
@@ -1972,6 +2312,9 @@ def auto_publish_now(workspace_id: int | None = None):
         ws = acc.get_workspace_or_404(current_user, workspace_id)
     else:
         ws = _active_workspace()
+    denied = acc.guard("publish", ws)
+    if denied:
+        return denied
 
     period = (request.form.get("period") or "today").strip().lower()
     date_from_s = (request.form.get("date_from") or "").strip()
@@ -2004,7 +2347,7 @@ def auto_publish_now(workspace_id: int | None = None):
             flash(msg, "warning")
         else:
             flash(msg, "success")
-    nxt = request.form.get("next") or request.referrer or url_for("smm.manager_panel")
+    nxt = safe_next_url(request.form.get("next"), url_for("smm.manager_panel"))
     return redirect(nxt)
 
 
@@ -2085,6 +2428,9 @@ def client_approvals_to_calendar(workspace_id: int, plan_id: int):
     from webapp.services import business as biz
 
     ws = acc.get_workspace_or_404(current_user, workspace_id)
+    denied = acc.guard("content", ws)
+    if denied:
+        return denied
     plan = ContentPlanBatch.query.filter_by(id=plan_id, workspace_id=ws.id).first_or_404()
     if (plan.client_status or "") != "approved":
         flash("В календарь можно внести только согласованный клиентом план.", "warning")
@@ -2121,6 +2467,9 @@ def client_approvals_regen_link(workspace_id: int):
     from webapp.services import business as biz
 
     ws = acc.get_workspace_or_404(current_user, workspace_id)
+    denied = acc.guard("workspace_settings", ws)
+    if denied:
+        return denied
     biz.regenerate_client_token(ws)
     flash("Ссылка обновлена. Старую ссылку клиенту больше не отправляйте.", "info")
     return redirect(url_for("smm.client_approvals", workspace_id=ws.id))
@@ -2132,10 +2481,23 @@ def client_portal(token: str):
     from webapp.models import ContentPlanBatch, Workspace
     from webapp.services import business as biz
     from webapp.services import schedule_queue as sq
+    from webapp.services import security_ops as sec
 
     token = (token or "").strip()
+    if len(token) < 16:
+        abort(404)
     ws = Workspace.query.filter_by(client_approve_token=token).first_or_404()
     if request.method == "POST":
+        blocked, msg = sec.portal_is_blocked(token)
+        sec.log_event(
+            "client_portal_post",
+            username=sec.portal_marker(token),
+            detail="approve_or_reject",
+            agency_user_id=ws.user_id,
+        )
+        if blocked:
+            flash(msg, "warning")
+            return redirect(url_for("smm.client_portal", token=token))
         plan_id = request.form.get("plan_id", type=int)
         decision = (request.form.get("decision") or "").strip()
         comment = (request.form.get("comment") or "").strip()[:1000]

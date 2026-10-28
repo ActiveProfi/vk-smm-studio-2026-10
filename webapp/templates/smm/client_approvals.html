@@ -150,7 +150,7 @@
   <div class="table-responsive">
     <table class="table table-sm mb-0">
       <thead>
-        <tr><th>Когда</th><th>Рубрика</th><th>Тема</th></tr>
+        <tr><th>Когда</th><th>Рубрика</th><th>Тема</th><th>Формат</th></tr>
       </thead>
       <tbody>
         {% for it in row.topics %}
@@ -158,6 +158,7 @@
           <td class="small">{{ format_publish_at(it.scheduled_for) if it.scheduled_for else '—' }}</td>
           <td class="small">{{ it.rubric_title or it.rubric_code or '—' }}</td>
           <td>{{ it.topic }}</td>
+          <td class="small">{{ it.format | publish_format_label }}</td>
         </tr>
         {% endfor %}
       </tbody>

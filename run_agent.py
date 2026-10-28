@@ -965,6 +965,15 @@ def _friendly_text_provider_error(exc: BaseException) -> str:
     return short
 
 
+def _optional_anthropic_key() -> str:
+    """Ключ прямого Claude, если он задан. Пустая строка — ключа нет, это не ошибка."""
+    for key_name in ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_KEY"):
+        value = (os.environ.get(key_name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def send_claude_request(payload: dict, api_key: str, provider: str) -> dict:
     if provider == "anthropic":
         return make_anthropic_request(payload, api_key)
@@ -986,14 +995,27 @@ def send_claude_request(payload: dict, api_key: str, provider: str) -> dict:
             },
         )
     except Exception as kie_exc:
+        # Порядок резерва текста: KIE → прямой Anthropic → VseGPT.
+        # Картинки и видео Anthropic не генерирует: там свои цепочки (VseGPT/KIE и модели KIE).
+        print(f"KIE: текстовый запрос не прошёл: {kie_exc}", file=sys.stderr)
+        anthropic_key = _optional_anthropic_key()
+        if anthropic_key:
+            try:
+                print("Текст: пробуем прямой Anthropic.", file=sys.stderr)
+                return make_anthropic_request(payload, anthropic_key)
+            except Exception as anth_exc:
+                print(f"Anthropic: текстовый запрос не прошёл: {anth_exc}", file=sys.stderr)
+
         import vsegpt_provider as vsegpt
 
         if not vsegpt.is_vsegpt_configured():
             raise RuntimeError(_friendly_text_provider_error(kie_exc)) from kie_exc
         try:
+            print("Текст: пробуем резерв VseGPT.", file=sys.stderr)
             vsegpt_key = vsegpt.get_vsegpt_api_key()
             return vsegpt.send_claude_via_vsegpt(payload, vsegpt_key)
         except Exception as vsegpt_exc:
+            print(f"VseGPT: текстовый запрос не прошёл: {vsegpt_exc}", file=sys.stderr)
             raise RuntimeError(
                 _friendly_text_provider_error(kie_exc)
                 + " "

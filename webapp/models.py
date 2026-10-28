@@ -24,6 +24,8 @@ class User(UserMixin, db.Model):
     plan_updated_at = db.Column(db.String(32), default="")
     plan_channels_note = db.Column(db.String(120), default="")  # текст для теста, напр. «2×business»
     privacy_accepted_at = db.Column(db.String(32), default="")
+    # Версия политики, с которой человек согласился. Если версия сменилась — просим согласие снова.
+    privacy_policy_version = db.Column(db.String(32), default="")
 
     drafts = db.relationship(
         "Draft",
@@ -106,7 +108,7 @@ class Workspace(db.Model):
     auto_publish_enabled = db.Column(db.Boolean, default=False)
     vk_token = db.Column(db.Text, default="")
     vk_group_id = db.Column(db.String(64), default="")
-    # VK Реклама (ads.vk.com): токен API + подпись кабинета для менеджера
+    # VK Реклама (ads.vk.ru): токен API + подпись кабинета для менеджера
     vk_ads_token = db.Column(db.Text, default="")
     vk_ads_account_id = db.Column(db.String(64), default="")
     vk_ads_client_id = db.Column(db.String(128), default="")
@@ -188,6 +190,10 @@ class Draft(db.Model):
     video_url = db.Column(db.String(1000), default="")
     publish_with_image = db.Column(db.Boolean, default=True)
     publish_with_video = db.Column(db.Boolean, default=False)
+    # text | image | carousel | clip | animation
+    publish_format = db.Column(db.String(32), default="image")
+    # дополнительные картинки карусели (JSON-список URL)
+    carousel_urls_json = db.Column(db.Text, default="[]")
     search_notes = db.Column(db.Text, default="")
     relevance_report = db.Column(db.Text, default="")
     generation_warning = db.Column(db.Text, default="")  # почему не получился визуал
@@ -221,7 +227,12 @@ class ApiUsageLog(db.Model):
 
 
 class SecurityEvent(db.Model):
-    """Журнал безопасности: входы, ошибки, смена команды/тарифа."""
+    """Журнал безопасности: входы, ошибки, смена команды/тарифа.
+
+    ip — только укороченный адрес (не полный). Полный IP не храним.
+    ip_hash — чтобы ограничивать попытки входа, не показывая адрес в журнале.
+    agency_user_id — владелец агентства: чужой журнал этому кабинету не показываем.
+    """
 
     __tablename__ = "security_event"
 
@@ -230,5 +241,7 @@ class SecurityEvent(db.Model):
     kind = db.Column(db.String(64), default="")  # login_ok|login_fail|logout|team_add|...
     username = db.Column(db.String(80), default="")
     ip = db.Column(db.String(64), default="")
+    ip_hash = db.Column(db.String(64), default="", index=True)
     detail = db.Column(db.String(500), default="")
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    agency_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)

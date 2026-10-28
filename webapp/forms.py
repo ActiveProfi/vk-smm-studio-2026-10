@@ -17,7 +17,14 @@ from wtforms.validators import DataRequired, Length, EqualTo, Optional, Regexp, 
 
 
 class RegisterForm(FlaskForm):
-    username = StringField("Логин", validators=[DataRequired(), Length(3, 80)])
+    username = StringField(
+        "Логин",
+        validators=[
+            DataRequired(),
+            Length(3, 80),
+            Regexp(r"^[^\s<>\"']+$", message="В логине нельзя использовать пробелы и символы < > \" '"),
+        ],
+    )
     password = PasswordField(
         "Пароль",
         validators=[DataRequired(), Length(8, 128)],
@@ -467,26 +474,6 @@ class PaymentStubForm(FlaskForm):
         default=2,
         validators=[Optional()],
     )
-    payer_name = StringField(
-        "Имя плательщика",
-        validators=[DataRequired(), Length(2, 120)],
-        render_kw={"placeholder": "Как в тестовой карте"},
-    )
-    card_number = StringField(
-        "Номер карты (тест)",
-        validators=[DataRequired(), Length(12, 24)],
-        render_kw={"placeholder": "4242 4242 4242 4242", "autocomplete": "off"},
-    )
-    card_exp = StringField(
-        "Срок (ММ/ГГ)",
-        validators=[DataRequired(), Length(4, 7)],
-        render_kw={"placeholder": "12/28", "autocomplete": "off"},
-    )
-    card_cvc = StringField(
-        "CVC (тест)",
-        validators=[DataRequired(), Length(3, 4)],
-        render_kw={"placeholder": "123", "autocomplete": "off"},
-    )
     agree_test = BooleanField(
         "Понимаю: это тестовая оплата, деньги не списываются",
         default=False,
@@ -515,8 +502,13 @@ class TeamInviteForm(FlaskForm):
         "Пароль (если логина ещё нет — создадим аккаунт)",
         validators=[Optional(), Length(0, 128)],
         render_kw={
-            "placeholder": "От 6 символов, только для нового логина",
+            "placeholder": "От 8 символов, только для нового логина",
             "autocomplete": "new-password",
         },
     )
+
+    def validate_password(self, field):
+        value = (field.data or "").strip()
+        if value and len(value) < 8:
+            raise ValidationError("Пароль нового сотрудника — не короче 8 символов.")
     submit = SubmitField("Добавить в команду")

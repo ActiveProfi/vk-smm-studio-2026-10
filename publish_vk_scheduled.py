@@ -161,12 +161,11 @@ def download_binary_limited(url: str, *, max_bytes: int, timeout: int = 900) -> 
     return b"".join(chunks), ctype
 
 
-def upload_photo_to_vk(image_url: str, group_id: str) -> str:
+def upload_photo_bytes(content: bytes, content_type: str, group_id: str) -> str:
+    """Залить уже скачанные байты картинки на стену сообщества."""
     upload_server = vk_api_call("photos.getWallUploadServer", {"group_id": group_id})
     upload_url = upload_server["upload_url"]
-
-    content, content_type = download_binary(image_url, timeout=240)
-    extension = mimetypes.guess_extension(content_type) or ".jpg"
+    extension = mimetypes.guess_extension(content_type or "") or ".jpg"
     filename = f"vk-image{extension}"
 
     boundary = f"----CursorBoundary{uuid.uuid4().hex}"
@@ -198,6 +197,11 @@ def upload_photo_to_vk(image_url: str, group_id: str) -> str:
     )
     photo = saved[0]
     return f"photo{photo['owner_id']}_{photo['id']}"
+
+
+def upload_photo_to_vk(image_url: str, group_id: str) -> str:
+    content, content_type = download_binary(image_url, timeout=240)
+    return upload_photo_bytes(content, content_type, group_id)
 
 
 def upload_video_to_vk(video_url: str, group_id: str, title: str) -> str:

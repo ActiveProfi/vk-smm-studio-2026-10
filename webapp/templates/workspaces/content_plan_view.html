@@ -43,7 +43,15 @@
 {% endif %}
 
 <div class="panel">
-  <h2 class="h6 mb-3">Темы плана</h2>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h2 class="h6 mb-0">Темы плана</h2>
+    {% if not plan.saved_to_calendar %}
+    <form method="post" id="plan-formats" action="{{ url_for('workspaces.content_plan_update_formats', workspace_id=workspace.id, plan_id=plan.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-sm btn-outline-dark">Сохранить форматы</button>
+    </form>
+    {% endif %}
+  </div>
   {% if topics %}
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
@@ -62,7 +70,17 @@
           <td class="small">{{ format_publish_at(it.scheduled_for) if it.scheduled_for else '—' }}</td>
           <td class="small">{{ it.rubric_title or it.rubric_code or '—' }}</td>
           <td>{{ it.topic }}</td>
-          <td class="small">{{ it.format or '—' }}</td>
+          <td class="small">
+            {% if not plan.saved_to_calendar %}
+            <select class="form-select form-select-sm" name="format" form="plan-formats">
+              {% for opt in publish_formats %}
+              <option value="{{ opt.code }}" {% if opt.code == it.format %}selected{% endif %}>{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+            {% else %}
+            {{ it.format_label or it.format or '—' }}
+            {% endif %}
+          </td>
           <td class="small text-muted">{{ it.note or '—' }}</td>
         </tr>
         {% endfor %}

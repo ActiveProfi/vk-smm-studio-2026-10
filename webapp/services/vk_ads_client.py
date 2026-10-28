@@ -1,7 +1,9 @@
-"""Клиент VK Реклама (Ads API v2, ads.vk.com / ads.vk.ru).
+"""Клиент VK Реклама (Ads API v2, кабинет https://ads.vk.ru/).
 
 Список кампаний + автообновление access_token через refresh_token.
 Секреты только в .env / настройках канала.
+Адрес API: VK_ADS_BASE_URL (по умолчанию https://ads.vk.ru/api/v2).
+OAuth: VK_ADS_OAUTH_URL или {база}/oauth2/token.json.
 """
 from __future__ import annotations
 
@@ -15,8 +17,27 @@ from typing import Any
 from urllib import error, parse, request
 
 
-BASE_URL = "https://ads.vk.com/api/v2"
-OAUTH_TOKEN_URL = "https://ads.vk.ru/api/v2/oauth2/token.json"
+DEFAULT_BASE_URL = "https://ads.vk.ru/api/v2"
+CABINET_URL = "https://ads.vk.ru/"
+
+
+def ads_base_url() -> str:
+    """Корень API. Читается при каждом запросе, чтобы тест мог подменить окружение."""
+    raw = (os.environ.get("VK_ADS_BASE_URL") or "").strip().rstrip("/")
+    return raw or DEFAULT_BASE_URL
+
+
+def oauth_token_url() -> str:
+    """Адрес выдачи токена. Пустой VK_ADS_OAUTH_URL — тот же хост, что и API."""
+    explicit = (os.environ.get("VK_ADS_OAUTH_URL") or "").strip()
+    if explicit:
+        return explicit
+    return f"{ads_base_url()}/oauth2/token.json"
+
+
+def cabinet_url() -> str:
+    """Страница кабинета в браузере. ads.vk.com для страниц больше не открывается."""
+    return CABINET_URL
 
 # Обновлять access_token за N секунд до истечения (запас ~30 мин)
 REFRESH_SKEW_SEC = 30 * 60
@@ -148,7 +169,7 @@ def _token_expires_soon() -> bool:
 def _oauth_token_request(body: dict[str, str]) -> dict:
     encoded = parse.urlencode(body).encode("utf-8")
     req = request.Request(
-        OAUTH_TOKEN_URL,
+        oauth_token_url(),
         data=encoded,
         method="POST",
         headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
@@ -270,7 +291,7 @@ def api_get(
     *,
     auto_refresh: bool = True,
 ) -> Any:
-    """GET к ads.vk.com/api/v2/... с Bearer-токеном и автообновлением при 401."""
+    """GET к API VK Реклама с Bearer-токеном и автообновлением при 401."""
     token = ensure_access_token(token) if auto_refresh else (token or "").strip()
     if not token:
         raise ValueError(
@@ -283,7 +304,7 @@ def api_get(
         clean = {k: v for k, v in params.items() if v is not None and v != ""}
         if clean:
             query = "?" + parse.urlencode(clean)
-    url = f"{BASE_URL}{path}{query}"
+    url = f"{ads_base_url()}{path}{query}"
 
     def _once(access: str) -> Any:
         req = request.Request(
@@ -643,7 +664,7 @@ def get_campaigns(
     warnings: list[str] = []
     if not campaigns:
         warnings.append(
-            "Кампаний не найдено. Если в кабинете ads.vk.com они есть — "
+            "Кампаний не найдено. Если в кабинете ads.vk.ru они есть — "
             "проверьте, что токен выдан именно для этого кабинета."
         )
 
@@ -655,6 +676,6 @@ def get_campaigns(
         "total_day_budget": total_day,
         "warnings": warnings,
         "source": "vk_ads_v2",
-        "cabinet_url": "https://ads.vk.com/",
+        "cabinet_url": cabinet_url(),
         "access_token": access,
     }

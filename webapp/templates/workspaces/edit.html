@@ -345,7 +345,7 @@
         {% endif %}
       </div>
       <p class="small text-muted mb-3">
-        Привяжите рекламный кабинет <a href="https://ads.vk.com/" target="_blank" rel="noopener">ads.vk.com</a>
+        Привяжите рекламный кабинет <a href="https://ads.vk.ru/" target="_blank" rel="noopener">ads.vk.ru</a>
         к этому каналу через мастер:
         <a href="{{ url_for('smm.ads_connect', workspace_id=workspace.id) if workspace else url_for('smm.ads_connect') }}">Подключить ВК Ads</a>.
         Список всех кабинетов — в меню <strong>Реклама</strong>. Рекомендуется тариф <strong>Pro</strong>.
@@ -362,7 +362,7 @@
           {% if workspace and workspace.vk_ads_token %}
             Токен уже сохранён. Введите новый, только если хотите заменить.
           {% else %}
-            Access token из ads.vk.com → Настройки → Доступ к API.
+            Access token из ads.vk.ru → Настройки → Доступ к API.
             Можно временно положить в <code>.env</code> как <code>VK_ADS_TOKEN</code>.
           {% endif %}
         </div>
@@ -464,17 +464,20 @@
       statusEl.className = "small text-success";
       resultEl.style.display = "block";
       resultEl.className = "alert alert-success py-2 small mb-3";
-      let html = "<strong>" + (data.group_name || "Группа") + "</strong>";
-      html += " · id " + (data.group_id || "");
-      if (data.screen_name) html += " · vk.com/" + data.screen_name;
-      if (data.members_count != null) html += " · подписчиков: " + data.members_count;
-      html += "<br><span class='text-muted'>" + (data.source_label || "") + "</span>";
+      const esc = (value) => String(value ?? "")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      let html = "<strong>" + esc(data.group_name || "Группа") + "</strong>";
+      html += " · id " + esc(data.group_id || "");
+      if (data.screen_name) html += " · vk.com/" + esc(data.screen_name);
+      if (data.members_count != null) html += " · подписчиков: " + esc(data.members_count);
+      html += "<br><span class='text-muted'>" + esc(data.source_label || "") + "</span>";
       if (data.can_read_wall === false) {
         html += "<br><span class='text-danger'>Стену прочитать не удалось — проверьте права токена (wall).</span>";
       }
       resultEl.innerHTML = html;
       if (data.media_hint) {
-        resultEl.innerHTML += "<br><br>" + data.media_hint;
+        resultEl.innerHTML += "<br><br>" + esc(data.media_hint);
       }
     } catch (e) {
       statusEl.textContent = "Ошибка сети";
@@ -741,6 +744,16 @@
   const inputEl = document.getElementById("reference_uploads");
   const btnUpload = document.getElementById("btn-upload-refs");
 
+  function escAttr(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function safeMediaUrl(value) {
+    const url = String(value || "");
+    if (url.startsWith("/media/") || url.startsWith("https://") || url.startsWith("http://")) return url;
+    return "";
+  }
   function renderRefs(refs) {
     if (!listEl) return;
     listEl.innerHTML = "";
@@ -749,8 +762,8 @@
       wrap.className = "visual-ref-card border rounded p-1 position-relative";
       wrap.dataset.refId = ref.id;
       wrap.innerHTML =
-        '<img src="' + ref.url + '" alt="' + (ref.name || "") + '" class="rounded" style="width:96px;height:96px;object-fit:cover;">' +
-        '<button type="button" class="btn btn-sm btn-outline-danger visual-ref-delete mt-1 w-100" data-ref-id="' + ref.id + '">Удалить</button>';
+        '<img src="' + escAttr(safeMediaUrl(ref.url)) + '" alt="' + escAttr(ref.name || "") + '" class="rounded" style="width:96px;height:96px;object-fit:cover;">' +
+        '<button type="button" class="btn btn-sm btn-outline-danger visual-ref-delete mt-1 w-100" data-ref-id="' + escAttr(ref.id) + '">Удалить</button>';
       listEl.appendChild(wrap);
     });
     listEl.querySelectorAll(".visual-ref-delete").forEach((btn) => {

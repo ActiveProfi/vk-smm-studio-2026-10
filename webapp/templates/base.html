@@ -10,54 +10,73 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
-<body class="{% if current_user.is_authenticated %}app-shell{% endif %}">
+<body class="{% if current_user.is_authenticated %}app-shell crm-body{% endif %}">
   {% block body_nav %}
   {% if current_user.is_authenticated %}
-  <nav class="navbar navbar-expand-lg navbar-dark app-nav">
-    <div class="container">
-      <a class="navbar-brand fw-bold" href="{{ url_for('auth.home') }}" title="На главную">
+  <div class="crm-frame">
+    <aside class="crm-side" id="crm-side">
+      <a class="crm-brand" href="{{ url_for('smm.manager_panel') }}">
         <span class="app-brand-mark">VK</span> SMM
       </a>
-      <div class="navbar-nav ms-auto flex-row gap-2 gap-lg-3 flex-wrap align-items-center">
-        {% if active_workspace and not hide_nav_channel_bind %}
-        <a class="nav-link small py-0 app-nav-channel d-none d-md-inline"
-           href="{{ url_for('workspaces.content_plan', workspace_id=active_workspace.id) }}"
-           title="Контент-план канала">
-          Канал: <strong id="nav-active-channel">{{ active_workspace.name }}</strong>
-        </a>
-        {% elif active_workspace %}
-        <span class="nav-link small py-0 app-nav-channel d-none d-md-inline">
-          Все каналы · <strong id="nav-active-channel">{{ active_workspace.name }}</strong>
-        </span>
+      <nav class="crm-menu">
+        <a class="crm-link{% if request.endpoint == 'smm.manager_panel' %} is-active{% endif %}" href="{{ url_for('smm.manager_panel') }}">Дашборд</a>
+        <a class="crm-link{% if request.endpoint in ['workspaces.list_workspaces', 'workspaces.create_workspace', 'workspaces.edit_workspace'] %} is-active{% endif %}" href="{{ url_for('workspaces.list_workspaces') }}">Каналы</a>
+        {% if active_workspace %}
+        <a class="crm-link{% if request.endpoint and request.endpoint.startswith('workspaces.content_plan') %} is-active{% endif %}" href="{{ url_for('workspaces.content_plan', workspace_id=active_workspace.id) }}">Контент-план</a>
+        {% else %}
+        <a class="crm-link" href="{{ url_for('workspaces.list_workspaces') }}">Контент-план</a>
         {% endif %}
-        <a class="nav-link" href="{{ url_for('smm.manager_panel') }}">Панель</a>
-        <a class="nav-link" href="{{ url_for('workspaces.list_workspaces') }}">Каналы</a>
-        {% if active_workspace and not hide_nav_channel_bind %}
-        <a class="nav-link" href="{{ url_for('workspaces.content_plan', workspace_id=active_workspace.id) }}">Контент-план</a>
+        <a class="crm-link{% if request.endpoint in ['smm.dashboard', 'smm.preview', 'smm.generate', 'smm.generation_queue'] %} is-active{% endif %}" href="{{ url_for('smm.dashboard') }}">Черновики</a>
+        <a class="crm-link{% if request.endpoint == 'smm.calendar' %} is-active{% endif %}" href="{{ url_for('smm.calendar') }}">Календарь</a>
+        <a class="crm-link{% if request.endpoint and 'approval' in (request.endpoint or '') %} is-active{% endif %}" href="{{ url_for('smm.client_approvals') }}">Согласование</a>
+        <a class="crm-link{% if request.endpoint in ['smm.month_report', 'smm.month_report_excel', 'smm.month_report_pdf', 'smm.stats'] %} is-active{% endif %}" href="{{ url_for('smm.month_report') }}">Отчёты</a>
+        <a class="crm-link{% if request.endpoint and request.endpoint.startswith('smm.ads') %} is-active{% endif %}" href="{{ url_for('smm.ads_cabinets') }}">Реклама</a>
+        <a class="crm-link{% if request.endpoint == 'team.index' %} is-active{% endif %}" href="{{ url_for('team.index') }}">Команда</a>
+        {% if can_manage_team %}
+        <a class="crm-link{% if request.endpoint == 'billing.index' %} is-active{% endif %}" href="{{ url_for('billing.index') }}">Оплата</a>
+        <a class="crm-link{% if request.endpoint == 'auth.security_log' %} is-active{% endif %}" href="{{ url_for('auth.security_log') }}">Журнал</a>
         {% endif %}
-        <a class="nav-link" href="{{ url_for('smm.dashboard') }}">Черновики</a>
-        <a class="nav-link" href="{{ url_for('smm.client_approvals') }}">Согласование</a>
-        <a class="nav-link" href="{{ url_for('smm.generation_queue') }}">Очередь</a>
-        <a class="nav-link" href="{{ url_for('smm.generate') }}">Генерация</a>
-        <a class="nav-link" href="{{ url_for('smm.calendar') }}">Календарь</a>
-        <a class="nav-link" href="{{ url_for('smm.month_report') }}">Отчёт</a>
-        <a class="nav-link" href="{{ url_for('smm.stats') }}">Статистика</a>
-        <a class="nav-link" href="{{ url_for('smm.ads_cabinets') }}">Реклама</a>
-        <a class="nav-link" href="{{ url_for('smm.ads_report') }}">Отчёт Ads</a>
-        <a class="nav-link" href="{{ url_for('team.index') }}">Команда</a>
-        <a class="nav-link" href="{{ url_for('auth.security_log') }}">Журнал</a>
-        <a class="nav-link" href="{{ url_for('billing.index') }}">Оплата</a>
-        <a class="nav-link app-nav-logout" href="{{ url_for('auth.logout') }}">Выход</a>
+        <a class="crm-link{% if request.endpoint == 'auth.account' %} is-active{% endif %}" href="{{ url_for('auth.account') }}">Настройки данных</a>
+      </nav>
+      <div class="crm-side-foot">
+        {% if user_role %}<div class="small text-white-50 mb-2">{{ user_role }}</div>{% endif %}
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-outline-light w-100">Выход</button>
+        </form>
       </div>
-    </div>
-  </nav>
-  {% if dev_skip_auth %}
-  <div class="dev-skip-banner">Режим разработки: вход без логина включён (WEBAPP_DEV_SKIP_AUTH=1)</div>
-  {% endif %}
+    </aside>
+    <div class="crm-workspace">
+      <div class="crm-top">
+        <button class="btn btn-sm btn-outline-dark d-lg-none" type="button" id="crm-menu-btn" aria-label="Открыть меню">Меню</button>
+        {% if nav_workspaces %}
+        <div class="dropdown">
+          <button class="btn btn-sm nav-client-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <span id="nav-active-channel">{{ active_workspace.name if active_workspace else 'Выберите клиента' }}</span>
+          </button>
+          <ul class="dropdown-menu">
+            {% for ws in nav_workspaces %}
+            <li>
+              <form method="post" action="{{ url_for('workspaces.select_workspace', workspace_id=ws.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="next" value="content_plan">
+                <button type="submit" class="dropdown-item{% if active_workspace and active_workspace.id == ws.id %} active{% endif %}">{{ ws.name }}</button>
+              </form>
+            </li>
+            {% endfor %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('workspaces.list_workspaces') }}">Все клиенты</a></li>
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+      {% if dev_skip_auth %}
+      <div class="dev-skip-banner">Режим разработки: вход без логина включён (WEBAPP_DEV_SKIP_AUTH=1)</div>
+      {% endif %}
   {% endif %}
   {% endblock %}
 
-  <main class="{% block main_class %}container py-4 app-main{% endblock %}">
+  <main class="{% block main_class %}app-main crm-content{% endblock %}">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -67,5 +86,17 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  {% block body_nav_end %}
+  {% if current_user.is_authenticated %}
+    </div>
+  </div>
+  {% endif %}
+  {% endblock %}
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.getElementById("crm-menu-btn")?.addEventListener("click", () => {
+      document.getElementById("crm-side")?.classList.toggle("is-open");
+    });
+  </script>
 </body>
 </html>

@@ -110,6 +110,8 @@ def run_pipeline(
     reference_local_files: list[dict] | None = None,
     search_hint: str = "",
     marketer_text_guidance: str = "",
+    text_revision: str = "",
+    current_post: str = "",
     on_progress=None,
 ) -> dict:
     """
@@ -138,6 +140,18 @@ def run_pipeline(
         materials_list.insert(0, f"Тема поста: {topic}")
     if workspace_theme:
         materials_list.insert(0, f"Тематика канала: {workspace_theme}")
+    if (current_post or "").strip():
+        materials_list.insert(
+            0,
+            "Текущий текст поста. Перепиши его, сохрани факты и смысл:\n"
+            + current_post.strip(),
+        )
+    if (text_revision or "").strip():
+        materials_list.insert(
+            0,
+            "Пожелание к новому тексту (обязательно выполни, не выбрасывая факты):\n"
+            + text_revision.strip(),
+        )
     if (marketer_text_guidance or "").strip():
         materials_list.insert(
             0,
@@ -335,6 +349,7 @@ def _resolve_visual_data(
     reference_image_urls: list[str] | None = None,
     reference_image_names: list[str] | None = None,
     video_brief: dict | None = None,
+    visual_wish: str = "",
     on_progress=None,
 ) -> tuple[dict | None, str]:
     answer = (agent_answer or "").strip()
@@ -376,6 +391,12 @@ def _resolve_visual_data(
         f"{ref_line}"
         f"Текст поста:\n{post_text}\n\n"
     )
+    if (visual_wish or "").strip():
+        user_message += (
+            "Пожелание к визуалу (обязательно учти в промпте):\n"
+            + visual_wish.strip()
+            + "\n\n"
+        )
     if generate_video:
         user_message += video_skill.llm_video_skill_instructions(
             video_brief=video_brief
@@ -423,6 +444,7 @@ def _generate_visuals(
     reference_image_urls: list[str] | None = None,
     reference_image_names: list[str] | None = None,
     reference_local_files: list[dict] | None = None,
+    visual_wish: str = "",
     on_progress=None,
 ) -> None:
     kie_key = agent.get_api_key()
@@ -436,6 +458,11 @@ def _generate_visuals(
         style_suffix = (
             "\n\nСтиль канала (обязательно): "
             + visual_style_prompt.strip()[:1200]
+        )
+    if (visual_wish or "").strip():
+        style_suffix += (
+            "\n\nПожелание к этому визуалу (обязательно): "
+            + visual_wish.strip()[:800]
         )
 
     if not visual_data:
@@ -571,6 +598,12 @@ def _generate_visuals(
                 neg = (video_vd.get("video_negative_prompt") or "").strip()
                 if not neg and video_brief:
                     neg = video_skill.resolve_negative_prompt(video_brief)
+                if (visual_wish or "").strip():
+                    video_vd["video_prompt_text"] = (
+                        (video_vd.get("video_prompt_text") or "").strip()
+                        + "\nПожелание: "
+                        + visual_wish.strip()[:800]
+                    ).strip()
                 if neg:
                     video_vd["video_prompt_text"] = video_skill.attach_negative_to_prompt_if_needed(
                         video_vd.get("video_prompt_text") or "",
@@ -704,6 +737,7 @@ def run_visual_for_draft(
     reference_image_urls: list[str] | None = None,
     reference_image_names: list[str] | None = None,
     reference_local_files: list[dict] | None = None,
+    visual_wish: str = "",
     on_progress=None,
 ) -> dict:
     """Догенерация визуала для готового черновика — текст не трогаем."""
@@ -734,6 +768,7 @@ def run_visual_for_draft(
         reference_image_urls=reference_image_urls,
         reference_image_names=reference_image_names,
         video_brief=video_brief,
+        visual_wish=visual_wish,
         on_progress=on_progress,
     )
     if new_answer:
@@ -752,6 +787,7 @@ def run_visual_for_draft(
         reference_image_urls=reference_image_urls or [],
         reference_image_names=reference_image_names or [],
         reference_local_files=reference_local_files or [],
+        visual_wish=visual_wish,
         on_progress=on_progress,
     )
     result["ok"] = bool(result.get("image_url") or result.get("video_url"))

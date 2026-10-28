@@ -28,6 +28,97 @@ body.app-shell {
   background: #eef0f3;
 }
 
+.crm-body {
+  margin: 0;
+}
+
+.crm-frame {
+  display: flex;
+  min-height: 100vh;
+  align-items: stretch;
+}
+
+.crm-side {
+  width: 232px;
+  flex: 0 0 232px;
+  background: var(--ink);
+  color: #f4f1ea;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 1rem 0.75rem;
+}
+
+.crm-brand {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  margin: 0.2rem 0.5rem 1rem;
+}
+
+.crm-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  overflow: auto;
+}
+
+.crm-link {
+  color: rgba(244, 241, 234, 0.78);
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.92rem;
+}
+
+.crm-link:hover,
+.crm-link.is-active {
+  background: rgba(232, 184, 74, 0.18);
+  color: #fff;
+}
+
+.crm-side-foot {
+  margin-top: auto;
+  padding: 0.8rem 0.4rem 0.2rem;
+}
+
+.crm-workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.crm-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem 0;
+}
+
+.crm-content {
+  width: 100%;
+  max-width: 1240px;
+  padding: 1rem 1.25rem 2.5rem;
+}
+
+@media (max-width: 991.98px) {
+  .crm-side {
+    position: fixed;
+    z-index: 40;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+  }
+  .crm-side.is-open {
+    transform: none;
+  }
+  .crm-frame {
+    display: block;
+  }
+}
+
 /* Публичный портал клиента — тот же шрифт и фон */
 body.portal-shell {
   background: #eef0f3;
@@ -74,6 +165,7 @@ body.portal-shell {
   color: rgba(244, 241, 234, 0.72) !important;
   padding: 0.22rem 0.3rem !important;
   border-radius: 6px;
+  white-space: nowrap;
 }
 
 .app-nav .nav-link:hover {
@@ -94,8 +186,64 @@ body.portal-shell {
   font-weight: 600;
 }
 
-.app-nav-logout {
-  color: rgba(244, 241, 234, 0.5) !important;
+.app-nav .nav-link.active {
+  color: #fff !important;
+  background: rgba(232, 184, 74, 0.18);
+}
+
+.nav-client-btn {
+  background: var(--accent);
+  color: var(--ink);
+  border: 0;
+  font-weight: 700;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-client-btn:hover,
+.nav-client-btn:focus {
+  background: var(--accent-hover);
+  color: var(--ink);
+}
+
+.app-nav .dropdown-menu {
+  background: #1a2332;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 14rem;
+}
+
+.app-nav .dropdown-item {
+  color: #f4f1ea;
+  font-weight: 550;
+}
+
+.app-nav .dropdown-item:hover,
+.app-nav .dropdown-item:focus,
+.app-nav .dropdown-item.active {
+  background: rgba(232, 184, 74, 0.16);
+  color: #fff;
+}
+
+.app-nav .dropdown-divider {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.app-nav .navbar-toggler {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+@media (max-width: 991.98px) {
+  .app-nav .navbar-collapse {
+    padding: 0.4rem 0 0.8rem;
+  }
+  .app-nav .nav-link {
+    padding: 0.45rem 0.2rem !important;
+  }
+  .nav-client-btn {
+    max-width: 100%;
+  }
 }
 
 .panel {
@@ -2037,5 +2185,108 @@ code {
 .billing-form .form-label {
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.studio {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.studio-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: sticky;
+  top: 0.75rem;
+}
+
+.studio-tab {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-weight: 700;
+}
+
+.studio-tab.is-active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.studio-pane {
+  margin-top: 0.6rem;
+}
+
+.studio-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.vk-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem 1rem 1.1rem;
+  box-shadow: var(--shadow);
+  min-height: 420px;
+}
+
+.vk-card__head {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
+.vk-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #5181b8;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+
+.vk-card__media,
+#preview-image,
+#preview-video {
+  width: 100%;
+  border-radius: 12px;
+  margin-top: 0.6rem;
+  max-height: 460px;
+  object-fit: cover;
+  background: #f3f4f6;
+}
+
+.vk-carousel {
+  display: flex;
+  gap: 0.4rem;
+  overflow: auto;
+  margin-top: 0.5rem;
+}
+
+.vk-carousel img {
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+@media (max-width: 991.98px) {
+  .studio,
+  .studio-stage {
+    grid-template-columns: 1fr;
+  }
+  .studio-rail {
+    position: static;
+  }
 }
 

@@ -14,9 +14,8 @@
 
 <div class="alert alert-warning billing-stub-banner" role="status">
   <strong>Тестовый режим.</strong>
-  Форма оплаты — заглушка для демонстрации. Деньги с карты <u>не списываются</u>,
-  данные карты в базу <u>не сохраняются</u>. Можно вводить любые тестовые цифры
-  (например <code>4242 4242 4242 4242</code>).
+  Деньги не списываются. Номер карты, срок и код мы не спрашиваем и не храним —
+  для демонстрации достаточно выбрать тариф и подтвердить галочкой.
 </div>
 
 <div class="row g-3 mb-3">
@@ -79,24 +78,6 @@
       <div class="col-md-4">
         <label class="form-label">{{ form.channel_count.label.text }}</label>
         {{ form.channel_count(class="form-control", min="0", max="100") }}
-      </div>
-      <div class="col-md-8">
-        <label class="form-label">{{ form.payer_name.label.text }}</label>
-        {{ form.payer_name(class="form-control") }}
-        {% for e in form.payer_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">{{ form.card_number.label.text }}</label>
-        {{ form.card_number(class="form-control") }}
-        {% for e in form.card_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">{{ form.card_exp.label.text }}</label>
-        {{ form.card_exp(class="form-control") }}
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">{{ form.card_cvc.label.text }}</label>
-        {{ form.card_cvc(class="form-control") }}
       </div>
       <div class="col-12">
         <div class="form-check">
