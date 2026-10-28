@@ -241,7 +241,7 @@ def test_privacy_gate_blocks_cabinet_until_accept(app, client):
     client.post("/auth/accept-privacy", data={"agree": "1"}, follow_redirects=True)
     home = client.get("/manager")
     assert home.status_code == 200
-    assert "Панель" in home.get_data(as_text=True)
+    assert "Дашборд" in home.get_data(as_text=True)
 
 
 def test_health_does_not_leak_dev_flag(client):

@@ -3,283 +3,176 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-3">
   <div>
-    <p class="lk-kicker mb-1">Кабинет агентства</p>
-    <h1 class="h3 mb-1">Предпросмотр</h1>
-    <p class="text-muted mb-0">{{ draft.topic }} · {{ draft.post_type }} ·
-      <span class="badge badge-status-{{ draft.status }}">{{ publish_format_label }}</span>
-    </p>
+    <p class="lk-kicker mb-1">Пост</p>
+    <h1 class="h4 mb-1">{{ draft.topic or "Без темы" }}</h1>
+    <p class="text-muted mb-0">{{ publish_format_label }} · {{ workspace.name if workspace else "канал" }}</p>
   </div>
-  <a class="btn btn-outline-secondary" href="{{ url_for('smm.dashboard') }}">К черновикам</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('smm.dashboard') }}">К черновикам</a>
 </div>
 
-<div class="row g-4">
-  <div class="col-lg-7">
-    <div class="panel">
-      <h2 class="h6 text-muted">Текст поста</h2>
-      <div class="preview-text mb-3">{{ draft.post_text | vk_post_html | safe }}</div>
-      <label class="form-label" for="text-wish">Промпт для текста</label>
-      <textarea class="form-control mb-2" id="text-wish" rows="3" placeholder="Например: короче, добавь призыв записаться. Пусто — обычная перегенерация."></textarea>
-      <button type="button" class="btn btn-accent btn-lg w-100" id="btn-text-regen">Перегенерировать текст</button>
-      <p class="small text-muted mt-2 mb-0">Пожелание учитывается вместе с текущим текстом. Картинка и видео при этом не удаляются.</p>
+<div class="studio">
+  <aside class="studio-rail panel">
+    <button type="button" class="studio-tab is-active" data-studio="text">Текст</button>
+    <button type="button" class="studio-tab" data-studio="visual">Визуал</button>
+    <button type="button" class="studio-tab" data-studio="calendar">Календарь</button>
+
+    <div data-pane="text" class="studio-pane">
+      <p class="small text-muted mb-2">Переписать текущий текст. Картинка и видео останутся.</p>
+      {% if draft.relevance_report %}
+      <details class="small">
+        <summary>Проверка актуальности</summary>
+        <pre class="small mt-2 mb-0" style="max-height:160px;overflow:auto">{{ draft.relevance_report }}</pre>
+      </details>
+      {% endif %}
     </div>
-    {% if draft.relevance_report %}
-    <div class="panel mt-3">
-      <h2 class="h6 text-muted">Проверка актуальности</h2>
-      <pre class="small mb-0" style="max-height:220px;overflow:auto">{{ draft.relevance_report }}</pre>
+
+    <div data-pane="visual" class="studio-pane d-none">
+      {% if publish_format == 'animation' %}
+      <p class="small mb-2">Видео-анимация Veo 3.1{% if draft.image_url %} из картинки поста{% endif %}. Оценка {{ "%.0f"|format(animation_cost) }} ₽.
+        {% if not video_allowed %}На этом пакете нужен Премиум.{% endif %}</p>
+      {% endif %}
+      <div class="form-check">
+        <input class="form-check-input visual-publish-toggle" type="checkbox" id="vis-image"
+          {% if draft.image_url or draft.video_url %}
+            {% if publish_with_image %}checked{% endif %}{% if not draft.image_url %} disabled{% endif %}
+          {% else %}checked{% endif %}>
+        <label class="form-check-label" for="vis-image" id="vis-image-label">Картинка</label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input visual-publish-toggle" type="checkbox" id="vis-video"
+          {% if draft.image_url or draft.video_url %}
+            {% if publish_with_video %}checked{% endif %}{% if not draft.video_url %} disabled{% endif %}
+          {% endif %}>
+        <label class="form-check-label" for="vis-video" id="vis-video-label">Видео / клип</label>
+      </div>
+      <label class="form-label small mb-1" for="vis-video-provider">Нейросеть для видео</label>
+      <select class="form-select form-select-sm mb-2" id="vis-video-provider">
+        <option value="kling" selected>Kling 3.0</option>
+        <option value="minimax">MiniMax H3</option>
+        <option value="veo">Veo 3.1</option>
+        <option value="hailuo">Hailuo 02</option>
+      </select>
+      <details class="mb-2">
+        <summary class="small">Камера, свет, стиль</summary>
+        <div class="mt-2" id="video-brief-panel">
+          <input class="form-control form-control-sm mb-1" id="vb-object" placeholder="Кто или что в кадре">
+          <input class="form-control form-control-sm mb-1" id="vb-action" placeholder="Что происходит">
+          <input class="form-control form-control-sm mb-1" id="vb-place" placeholder="Где">
+          <select class="form-select form-select-sm mb-1" id="vb-camera">
+            {% for val, label in video_camera_choices %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+          </select>
+          <select class="form-select form-select-sm mb-1" id="vb-light">
+            {% for val, label in video_light_choices %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+          </select>
+          <select class="form-select form-select-sm mb-1" id="vb-style">
+            {% for val, label in video_style_choices %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+          </select>
+          <input class="form-control form-control-sm" id="vb-negative" value="текст, надписи, логотипы, водяной знак">
+        </div>
+      </details>
+      <div id="visual-selection-status" class="small text-muted mb-2"></div>
+      {% if draft.generation_warning and not draft.image_url and not draft.video_url %}
+      <div class="alert alert-warning small">{{ draft.generation_warning }}</div>
+      {% endif %}
+      <details>
+        <summary class="small">Загрузить свой файл</summary>
+        <form method="post" enctype="multipart/form-data" action="{{ url_for('smm.preview_upload_visual', draft_id=draft.id) }}" class="mt-2">
+          {{ publish_form.hidden_tag() }}
+          <input class="form-control form-control-sm mb-1" type="file" name="image_visual" accept=".png,.jpg,.jpeg,.webp,.gif,image/*">
+          <input class="form-control form-control-sm mb-2" type="file" name="video_visual" accept=".mp4,.webm,.mov,.m4v,video/*">
+          <button type="submit" class="btn btn-outline-dark btn-sm w-100">Загрузить</button>
+        </form>
+      </details>
+      <button type="button" class="btn btn-outline-dark btn-sm w-100 mt-2 d-none" id="btn-visual">Сгенерировать визуал</button>
+      <button type="button" class="btn btn-outline-dark btn-sm w-100 mt-2 d-none" id="btn-animation">Сгенерировать видео-анимацию</button>
+      <button type="button" class="d-none" id="btn-text-regen">Перегенерировать текст</button>
     </div>
-    {% endif %}
-  </div>
-  <div class="col-lg-5">
-    <div class="panel media-preview" id="visual">
-      <h2 class="h6 text-muted">Формат публикации</h2>
+
+    <div data-pane="calendar" class="studio-pane d-none">
       <form method="post" action="{{ url_for('smm.preview_set_format', draft_id=draft.id) }}" class="mb-3">
         {{ publish_form.hidden_tag() }}
-        <label class="form-label small mb-1" for="publish-format">Можно сменить и после генерации текста</label>
+        <label class="form-label small" for="publish-format">Формат</label>
         <select class="form-select form-select-sm" id="publish-format" name="publish_format" onchange="this.form.submit()">
           {% for opt in publish_formats %}
           <option value="{{ opt.code }}" {% if opt.code == publish_format %}selected{% endif %}>{{ opt.label }}</option>
           {% endfor %}
         </select>
-        <div class="form-text">Текст поста при смене формата не стирается. В ВК уйдёт то, что нужно этому формату.</div>
       </form>
-      <label class="form-label" for="visual-wish">Промпт для визуала</label>
-      <textarea class="form-control mb-2" id="visual-wish" rows="2" placeholder="Например: теплее свет, крупнее чашка. Пусто — обычная генерация."></textarea>
-      {% if publish_format == 'animation' %}
-      <div class="alert alert-light border small py-2">
-        Видео-анимация — короткий ролик Veo 3.1
-        {% if draft.image_url %}из картинки поста{% else %}по тексту поста{% endif %}.
-        Оценка стоимости: <strong>{{ "%.0f"|format(animation_cost) }} ₽</strong>.
-        {% if not video_allowed %}На этом пакете канала ролик не запустится — нужен Премиум.{% endif %}
-      </div>
-      <button type="button" class="btn btn-accent w-100 mb-2" id="btn-animation">Сгенерировать видео-анимацию</button>
-      {% endif %}
-      <h2 class="h6 text-muted mt-2">Визуал</h2>
-      <div id="preview-image-block" class="{% if not draft.image_url %}d-none{% endif %}">
-      {% if draft.image_url %}
-        <img src="{{ draft.image_url }}" alt="Превью картинки" id="preview-image">
-        <a class="btn btn-outline-dark btn-sm w-100 mt-2" href="{{ url_for('smm.preview_visual_full', draft_id=draft.id, kind='image') }}">Открыть визуал полностью</a>
-        <a class="btn btn-outline-secondary btn-sm w-100 mt-2" href="{{ url_for('smm.preview_download_visual', draft_id=draft.id, kind='image') }}">Скачать изображение</a>
-      {% endif %}
-      </div>
-      <div id="preview-video-block" class="{% if not draft.video_url %}d-none{% else %}mt-2{% endif %}">
-      {% if draft.video_url %}
-        <video controls src="{{ draft.video_url }}" id="preview-video"></video>
-        <a class="btn btn-outline-dark btn-sm w-100 mt-2" href="{{ url_for('smm.preview_visual_full', draft_id=draft.id, kind='video') }}">Открыть визуал полностью</a>
-        <a class="btn btn-outline-secondary btn-sm w-100 mt-2" href="{{ url_for('smm.preview_download_visual', draft_id=draft.id, kind='video') }}">Скачать видео</a>
-      {% endif %}
-      </div>
-      {% if draft.generation_warning and not draft.image_url and not draft.video_url %}
-        <div class="alert alert-warning small mb-2">
-          <strong>Визуал не получился в прошлый раз.</strong><br>
-          {{ draft.generation_warning }}<br>
-          <span class="text-muted">Нажмите «Сгенерировать визуал» ниже — проверка уже исправлена.</span>
+      <form method="post" id="schedule-form">
+        {{ schedule_form.hidden_tag() }}
+        <input type="hidden" name="form_action" value="schedule">
+        <div class="form-label small">Дата</div>
+        <div class="datetime-row mb-2">
+          {{ schedule_form.sched_day() }}
+          {{ schedule_form.sched_month() }}
+          {{ schedule_form.sched_year() }}
         </div>
-      {% endif %}
-      <div class="mb-3 mt-2">
-        <div class="form-check">
-          <input class="form-check-input visual-publish-toggle" type="checkbox" id="vis-image"
-            {% if draft.image_url or draft.video_url %}
-              {% if publish_with_image %}checked{% endif %}{% if not draft.image_url %} disabled{% endif %}
-            {% else %}
-              checked
-            {% endif %}>
-          <label class="form-check-label" for="vis-image" id="vis-image-label">
-            {% if draft.image_url or draft.video_url %}Картинка в посте{% else %}Сгенерировать картинку{% endif %}
-          </label>
+        <div class="form-label small">Время (+10)</div>
+        <div class="datetime-row mb-2">
+          {{ schedule_form.sched_hour() }}
+          {{ schedule_form.sched_minute() }}
         </div>
-        <div class="form-check">
-          <input class="form-check-input visual-publish-toggle" type="checkbox" id="vis-video"
-            {% if draft.image_url or draft.video_url %}
-              {% if publish_with_video %}checked{% endif %}{% if not draft.video_url %} disabled{% endif %}
-            {% endif %}>
-          <label class="form-check-label" for="vis-video" id="vis-video-label">
-            {% if draft.image_url or draft.video_url %}Видео в посте{% else %}Сгенерировать видео{% endif %}
-          </label>
-        </div>
-        <div class="mt-2" id="vis-video-provider-wrap">
-          <label class="form-label small mb-1" for="vis-video-provider">Нейросеть для видео</label>
-          <select class="form-select form-select-sm" id="vis-video-provider" style="max-width:280px">
-            <option value="kling" selected>Kling 3.0</option>
-            <option value="minimax">MiniMax H3</option>
-            <option value="veo">Veo 3.1</option>
-            <option value="hailuo">Hailuo 02</option>
-          </select>
-        </div>
-        <details class="mt-2 mb-2">
-          <summary class="small">Подробности ролика: камера, свет, стиль</summary>
-        <div class="mt-2 border rounded p-2 bg-light" id="video-brief-panel">
-          <div class="fw-semibold small mb-1">Подсказка для видео</div>
-          <p class="small text-muted mb-2">
-            Кратко: персонаж, действие, место. Остальное (камера, свет, стиль) — авто или выберите сами.
-          </p>
-          <div class="mb-1">
-            <label class="form-label small mb-0" for="vb-object">Персонаж / объект</label>
-            <input class="form-control form-control-sm" id="vb-object" placeholder="кто или что в кадре">
-          </div>
-          <div class="mb-1">
-            <label class="form-label small mb-0" for="vb-action">Действие</label>
-            <input class="form-control form-control-sm" id="vb-action" placeholder="что происходит">
-          </div>
-          <div class="mb-1">
-            <label class="form-label small mb-0" for="vb-place">Место</label>
-            <input class="form-control form-control-sm" id="vb-place" placeholder="где и когда">
-          </div>
-          <div class="mb-1">
-            <label class="form-label small mb-0" for="vb-camera">Камера</label>
-            <select class="form-select form-select-sm" id="vb-camera">
-              {% for val, label in video_camera_choices %}
-              <option value="{{ val }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-1">
-            <label class="form-label small mb-0" for="vb-light">Свет</label>
-            <select class="form-select form-select-sm" id="vb-light">
-              {% for val, label in video_light_choices %}
-              <option value="{{ val }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-1">
-            <label class="form-label small mb-0" for="vb-style">Стиль</label>
-            <select class="form-select form-select-sm" id="vb-style">
-              {% for val, label in video_style_choices %}
-              <option value="{{ val }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-0">
-            <label class="form-label small mb-0" for="vb-negative">Запреты</label>
-            <input class="form-control form-control-sm" id="vb-negative" value="текст, надписи, логотипы, водяной знак">
-          </div>
-        </div>
-        </details>
-        <div id="visual-selection-status" class="small text-muted mt-1"></div>
-      </div>
-      {% if not draft.image_url and not draft.video_url %}
-        <button type="button" class="btn btn-accent w-100 mb-2" id="btn-visual">Сгенерировать визуал</button>
-        <p class="text-muted small mb-2">Текст поста уже сохранён — визуал создаётся отдельно, без перезапуска с нуля.</p>
-      {% else %}
-        <button type="button" class="btn btn-outline-dark btn-sm w-100 mb-2" id="btn-visual">Пересоздать визуал</button>
-      {% endif %}
-      <details class="border rounded p-3 mb-2">
-        <summary class="fw-semibold mb-2">Загрузить свой визуал</summary>
-        <form method="post" enctype="multipart/form-data" action="{{ url_for('smm.preview_upload_visual', draft_id=draft.id) }}">
-          {{ publish_form.hidden_tag() }}
-          <div class="mb-2">
-            <label class="form-label small mb-1">Изображение</label>
-            <input class="form-control" type="file" name="image_visual" accept=".png,.jpg,.jpeg,.webp,.gif,image/*">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1">Видео</label>
-            <input class="form-control" type="file" name="video_visual" accept=".mp4,.webm,.mov,.m4v,video/*">
-          </div>
-          <div class="form-text mb-2">Можно загрузить своё изображение, своё видео или оба файла сразу.</div>
-          <button type="submit" class="btn btn-outline-dark btn-sm w-100">Загрузить визуал</button>
-        </form>
-      </details>
-    </div>
-
-    <div class="panel mt-3" style="border-color:#e8b84a!important">
-      <h2 class="h6">Согласование контент-плана</h2>
-      <p class="small text-muted mb-2">
-        Клиент согласует <strong>весь план</strong>, а не отдельные посты.
-        {% if plan_status %}<br>Статус плана этого поста: <strong>{{ plan_status }}</strong>{% endif %}
-      </p>
-      {% if workspace %}
-      <a class="btn btn-accent btn-sm w-100 mb-2" href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Страница согласования планов</a>
-      <a class="btn btn-outline-dark btn-sm w-100" href="{{ url_for('workspaces.content_plan', workspace_id=workspace.id) }}">Контент-план</a>
-      {% endif %}
-    </div>
-
-    <div class="panel mt-3">
-      <h2 class="h6">Опубликовать в ВК</h2>
-      {% if not vk_ready %}
-      <div class="alert alert-warning small py-2">
-        ВК ещё не подключен для этого канала.
-        <a href="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) if workspace else url_for('workspaces.list_workspaces') }}">Открыть настройки канала</a>
-        и нажать «Проверить подключение».
-      </div>
-      {% else %}
-      <p class="small text-muted mb-2">Группа: <code>{{ vk_group_label }}</code></p>
-      {% endif %}
-      <form method="post" id="publish-form">
+        {% if draft.scheduled_for %}
+        <p class="small text-muted">Сейчас: {{ draft.scheduled_for }}</p>
+        {% endif %}
+        <button type="submit" class="btn btn-outline-dark btn-sm w-100">Сохранить дату</button>
+      </form>
+      <form method="post" id="publish-form" class="mt-3">
         {{ publish_form.hidden_tag() }}
         <input type="hidden" name="form_action" value="publish">
         <input type="hidden" name="publish_with_image" id="publish_with_image" value="{% if publish_with_image %}1{% else %}0{% endif %}">
         <input type="hidden" name="publish_with_video" id="publish_with_video" value="{% if publish_with_video %}1{% else %}0{% endif %}">
-      {% if vk_ready %}
+        {% if vk_ready %}
         {{ publish_form.submit(class="btn btn-accent w-100") }}
-      {% else %}
-        <button type="button" class="btn btn-accent w-100" disabled>Опубликовать в ВК</button>
-      {% endif %}
+        <p class="small text-muted mt-1 mb-0">Группа {{ vk_group_label }}</p>
+        {% else %}
+        <button type="button" class="btn btn-accent w-100" disabled>Сначала подключите ВК</button>
+        {% endif %}
       </form>
       {% if draft.vk_post_id %}
-        <p class="small text-success mt-2 mb-0">Уже опубликовано: post_id={{ draft.vk_post_id }}</p>
+      <p class="small text-success mt-2 mb-0">Уже в ВК: {{ draft.vk_post_id }}</p>
       {% endif %}
     </div>
+  </aside>
 
-    <div class="panel mt-3">
-      <h2 class="h6">Календарь постинга</h2>
-      <form method="post" id="schedule-form">
-        {{ schedule_form.hidden_tag() }}
-        <input type="hidden" name="form_action" value="schedule">
-
-        <div class="mb-3">
-          <div class="form-label fw-semibold mb-2">Дата публикации</div>
-          <div class="datetime-row">
-            <label class="datetime-box">
-              <span class="datetime-box__hint">День</span>
-              {{ schedule_form.sched_day() }}
-              <span class="datetime-box__label">ДД</span>
-            </label>
-            <span class="datetime-sep">.</span>
-            <label class="datetime-box">
-              <span class="datetime-box__hint">Месяц</span>
-              {{ schedule_form.sched_month() }}
-              <span class="datetime-box__label">ММ</span>
-            </label>
-            <span class="datetime-sep">.</span>
-            <label class="datetime-box">
-              <span class="datetime-box__hint">Год</span>
-              {{ schedule_form.sched_year() }}
-              <span class="datetime-box__label">ГГГГ</span>
-            </label>
-          </div>
+  <div class="studio-stage">
+    <article class="vk-card" id="vk-preview">
+      <header class="vk-card__head">
+        <div class="vk-avatar">{{ (workspace.name[:1] if workspace and workspace.name else "В") }}</div>
+        <div>
+          <strong>{{ workspace.name if workspace else "Сообщество" }}</strong>
+          <div class="small text-muted">запись на стене</div>
         </div>
-
-        <div class="mb-3">
-          <div class="form-label fw-semibold mb-2">Время публикации</div>
-          <div class="datetime-row">
-            <label class="datetime-box">
-              <span class="datetime-box__hint">Час</span>
-              {{ schedule_form.sched_hour() }}
-              <span class="datetime-box__label">ЧЧ</span>
-            </label>
-            <span class="datetime-sep">:</span>
-            <label class="datetime-box">
-              <span class="datetime-box__hint">Минута</span>
-              {{ schedule_form.sched_minute() }}
-              <span class="datetime-box__label">ММ</span>
-            </label>
-          </div>
-          <div class="form-text mt-2">Часовой пояс: Владивосток (+10). Пример: 20 . 07 . 2026 &nbsp; 10 : 00</div>
-        </div>
-
-        {% for field in [schedule_form.sched_day, schedule_form.sched_month, schedule_form.sched_year, schedule_form.sched_hour, schedule_form.sched_minute] %}
-          {% if field.errors %}
-            {% for err in field.errors %}
-              <div class="text-danger small mb-1">{{ err }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endfor %}
-
-        {% if draft.scheduled_for %}
-          <p class="small text-muted mb-2">Сейчас в календаре: <strong>{{ draft.scheduled_for }}</strong></p>
+      </header>
+      <div class="vk-card__text preview-text" id="preview-text">{{ draft.post_text | vk_post_html | safe }}</div>
+      <div id="preview-image-block" class="{% if not draft.image_url %}d-none{% endif %}">
+        {% if draft.image_url %}
+        <img src="{{ draft.image_url }}" alt="Картинка поста" id="preview-image" class="vk-card__media">
         {% endif %}
+      </div>
+      {% if carousel_urls %}
+      <div class="vk-carousel">
+        {% for url in carousel_urls[:6] %}
+        <img src="{{ url }}" alt="Слайд карусели">
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div id="preview-video-block" class="{% if not draft.video_url %}d-none{% endif %}">
+        {% if draft.video_url %}
+        <video controls src="{{ draft.video_url }}" id="preview-video" class="vk-card__media"></video>
+        {% endif %}
+      </div>
+      {% if not draft.post_text and not draft.image_url and not draft.video_url %}
+      <p class="text-muted small mb-0">Здесь появится пост, как его увидят во ВКонтакте.</p>
+      {% endif %}
+    </article>
 
-        {{ schedule_form.submit(class="btn btn-outline-dark w-100") }}
-      </form>
+    <div class="studio-composer panel">
+      <label class="form-label" id="prompt-label" for="text-wish">Промпт для текста</label>
+      <textarea class="form-control mb-2" id="text-wish" rows="3" placeholder="Например: короче, добавь призыв записаться. Пусто — обычная перегенерация."></textarea>
+      <textarea class="form-control mb-2 d-none" id="visual-wish" rows="3" placeholder="Например: теплее свет, крупнее чашка. Пусто — обычная генерация."></textarea>
+      <button type="button" class="btn btn-accent btn-lg w-100" id="btn-generate-section">Сгенерировать</button>
+      <p class="small text-muted mt-2 mb-0" id="prompt-hint">Кнопка действует на раздел слева: сейчас это текст.</p>
     </div>
   </div>
 </div>
@@ -647,6 +540,46 @@
 
   // Автопереход на следующую ячейку после ввода цифр
   const cells = Array.from(document.querySelectorAll("#schedule-form .datetime-cell"));
+  document.querySelectorAll("[data-studio]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-studio]").forEach((item) => item.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      const name = btn.dataset.studio;
+      document.querySelectorAll("[data-pane]").forEach((pane) => {
+        pane.classList.toggle("d-none", pane.dataset.pane !== name);
+      });
+      const gen = document.getElementById("btn-generate-section");
+      const textBox = document.getElementById("text-wish");
+      const visualBox = document.getElementById("visual-wish");
+      const label = document.getElementById("prompt-label");
+      const hint = document.getElementById("prompt-hint");
+      textBox?.classList.toggle("d-none", name !== "text");
+      visualBox?.classList.toggle("d-none", name !== "visual");
+      if (label) {
+        label.textContent = name === "visual" ? "Промпт для визуала" : "Промпт для текста";
+        label.classList.toggle("d-none", name === "calendar");
+      }
+      if (hint) {
+        hint.textContent = name === "visual"
+          ? "Кнопка сгенерирует картинку, клип или видео-анимацию — по формату поста."
+          : name === "calendar"
+            ? "Здесь дата и формат. Кнопка сохраняет дату."
+            : "Кнопка перепишет текст. Пустой промпт — обычная перегенерация.";
+      }
+      if (!gen) return;
+      if (name === "calendar") gen.textContent = "Сохранить дату";
+      else gen.textContent = "Сгенерировать";
+    });
+  });
+  document.getElementById("btn-generate-section")?.addEventListener("click", () => {
+    const active = document.querySelector("[data-studio].is-active");
+    const name = active?.dataset.studio || "text";
+    if (name === "text") document.getElementById("btn-text-regen")?.click();
+    else if (name === "calendar") document.getElementById("schedule-form")?.requestSubmit();
+    else if ("{{ publish_format }}" === "animation") document.getElementById("btn-animation")?.click();
+    else document.getElementById("btn-visual")?.click();
+  });
+
   cells.forEach((input, idx) => {
     input.addEventListener("input", () => {
       input.value = input.value.replace(/\D/g, "").slice(0, input.maxLength || 4);

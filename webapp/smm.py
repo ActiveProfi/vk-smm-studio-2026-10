@@ -632,6 +632,28 @@ def return_draft_to_plan(draft_id: int):
     return redirect(url_for("smm.dashboard"))
 
 
+@smm_bp.route("/drafts/<int:draft_id>/delete", methods=["POST"])
+@login_required
+def delete_draft(draft_id: int):
+    """Удаляет только запись кабинета. Пост во ВКонтакте не трогаем."""
+    draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
+    published = (draft.status or "") == "published" or bool((draft.vk_post_id or "").strip())
+    topic = draft.topic or "без темы"
+    db.session.delete(draft)
+    db.session.commit()
+    if published:
+        flash(
+            f"Запись «{topic}» убрана из кабинета. Пост во ВКонтакте не удалялся.",
+            "info",
+        )
+    else:
+        flash(f"Черновик «{topic}» удалён.", "info")
+    return redirect(url_for("smm.dashboard"))
+
+
 @smm_bp.route("/manager")
 @login_required
 def manager_panel():
@@ -661,6 +683,9 @@ def manager_panel():
         drafts,
         rubric_counts=rubric_counts,
     )
+    from webapp.services.draft_schedule import is_overdue
+
+    board["totals"]["overdue"] = sum(1 for item in drafts if is_overdue(item))
     from webapp.services import business as biz
 
     package_by_id = {w.id: biz.package_status(w) for w in workspaces}
@@ -1878,6 +1903,7 @@ def preview(draft_id: int):
         animation_cost=biz.resolve_unit_cost("animation"),
         video_allowed=biz.package_allows_video(ws) if ws else True,
         carousel_count=len(pf_carousel(draft)),
+        carousel_urls=pf_carousel(draft),
     )
 
 

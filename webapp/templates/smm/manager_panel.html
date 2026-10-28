@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Панель управления · VK SMM{% endblock %}
+{% block title %}Дашборд · VK SMM{% endblock %}
 {% block content %}
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
   <div>
     <p class="lk-kicker mb-1">Кабинет агентства</p>
-    <h1 class="h4 mb-1">Панель управления</h1>
+    <h1 class="h4 mb-1">Дашборд</h1>
     <p class="text-muted small mb-0">
-      Все клиенты списком — как на демонстрации: сводка сверху, каналы ниже.
+      Каналы, посты, просрочки и расходы на ИИ. Ниже — ближайшие публикации по клиентам.
     </p>
   </div>
     <div class="d-flex flex-wrap gap-2">
@@ -62,6 +62,12 @@
   </div>
   </div>
 </div>
+{% set ns = namespace(cost=0) %}
+{% for row in board.rows %}
+  {% set api = api_costs_by_id.get(row.workspace.id) %}
+  {% if api %}{% set ns.cost = ns.cost + (api.total_rub or 0) %}{% endif %}
+{% endfor %}
+<p class="small text-muted mb-3">Расходы на ИИ за месяц по всем каналам: <strong class="text-dark">{{ "%.0f"|format(ns.cost) }} ₽</strong></p>
 
 {% if board.rows %}
 {% for row in board.rows %}

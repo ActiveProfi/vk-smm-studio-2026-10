@@ -74,6 +74,19 @@
               <td class="small">{{ format_publish_at(d.scheduled_for) if d.scheduled_for else '—' }}</td>
               <td class="text-end">
                 <a href="{{ url_for('smm.preview', draft_id=d.id) }}">Открыть</a>
+                {% if d.status == 'published' or d.vk_post_id %}
+                <form method="post" action="{{ url_for('smm.delete_draft', draft_id=d.id) }}" class="d-inline"
+                      onsubmit="return confirm('Удалить запись из кабинета? Пост во ВКонтакте останется. Действие нельзя отменить.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-link text-danger p-0 ms-2" title="Удалить из кабинета" aria-label="Удалить из кабинета">×</button>
+                </form>
+                {% else %}
+                <form method="post" action="{{ url_for('smm.delete_draft', draft_id=d.id) }}" class="d-inline"
+                      onsubmit="return confirm('Удалить черновик? Действие нельзя отменить.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-link text-danger p-0 ms-2" title="Удалить" aria-label="Удалить">×</button>
+                </form>
+                {% endif %}
                 {% if is_overdue(d) %}
                 <form method="post" action="{{ url_for('smm.return_draft_to_plan', draft_id=d.id) }}" class="d-inline-flex flex-wrap align-items-center gap-1 mt-1">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
