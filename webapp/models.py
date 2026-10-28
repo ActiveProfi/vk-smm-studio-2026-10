@@ -14,7 +14,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     # устаревшие поля (оставлены для совместимости; основной источник — Workspace)
-    vk_token = db.Column(db.String(512), default="")
+    vk_token = db.Column(db.Text, default="")
     vk_group_id = db.Column(db.String(64), default="")
     active_workspace_id = db.Column(db.Integer, db.ForeignKey("workspace.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -23,6 +23,7 @@ class User(UserMixin, db.Model):
     plan_status = db.Column(db.String(32), default="trial")  # trial|active|test_paid|none
     plan_updated_at = db.Column(db.String(32), default="")
     plan_channels_note = db.Column(db.String(120), default="")  # текст для теста, напр. «2×business»
+    privacy_accepted_at = db.Column(db.String(32), default="")
 
     drafts = db.relationship(
         "Draft",
@@ -44,15 +45,36 @@ class User(UserMixin, db.Model):
         return bcrypt.check_password_hash(self.password_hash, password)
 
     def get_active_workspace(self):
+        from webapp.services import access as acc
+
         if self.active_workspace_id:
             ws = db.session.get(Workspace, self.active_workspace_id)
-            if ws and ws.user_id == self.id:
+            if ws and acc.can_access_workspace(self, ws):
                 return ws
+        first = acc.list_workspaces(self).first()
+        if first:
+            return first
         return (
             Workspace.query.filter_by(user_id=self.id, is_active=True)
             .order_by(Workspace.id.asc())
             .first()
         )
+
+
+class TeamMember(db.Model):
+    """Сотрудник агентства: доступ к каналам владельца (agency_user_id)."""
+
+    __tablename__ = "team_member"
+
+    id = db.Column(db.Integer, primary_key=True)
+    agency_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    role = db.Column(db.String(32), default="manager")  # manager | viewer
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    agency = db.relationship("User", foreign_keys=[agency_user_id])
+    member = db.relationship("User", foreign_keys=[user_id])
 
 
 class Workspace(db.Model):
@@ -82,8 +104,18 @@ class Workspace(db.Model):
     require_client_approval = db.Column(db.Boolean, default=False)
     # Автопубликация due-постов
     auto_publish_enabled = db.Column(db.Boolean, default=False)
-    vk_token = db.Column(db.String(512), default="")
+    vk_token = db.Column(db.Text, default="")
     vk_group_id = db.Column(db.String(64), default="")
+    # VK Реклама (ads.vk.com): токен API + подпись кабинета для менеджера
+    vk_ads_token = db.Column(db.Text, default="")
+    vk_ads_account_id = db.Column(db.String(64), default="")
+    vk_ads_client_id = db.Column(db.String(128), default="")
+    vk_ads_client_secret = db.Column(db.Text, default="")
+    vk_ads_refresh_token = db.Column(db.Text, default="")
+    vk_ads_token_expires_at = db.Column(db.String(32), default="")  # unix time
+    vk_ads_status = db.Column(db.String(32), default="")  # connected|error|""
+    vk_ads_last_error = db.Column(db.Text, default="")
+    vk_ads_connected_at = db.Column(db.String(64), default="")
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -186,3 +218,17 @@ class ApiUsageLog(db.Model):
     cost_rub = db.Column(db.Float, default=0.0)
     note = db.Column(db.String(300), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class SecurityEvent(db.Model):
+    """Журнал безопасности: входы, ошибки, смена команды/тарифа."""
+
+    __tablename__ = "security_event"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    kind = db.Column(db.String(64), default="")  # login_ok|login_fail|logout|team_add|...
+    username = db.Column(db.String(80), default="")
+    ip = db.Column(db.String(64), default="")
+    detail = db.Column(db.String(500), default="")
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)

@@ -18,11 +18,85 @@ KIE_IMAGE_TASK_URL = "https://api.kie.ai/api/v1/jobs/createTask"
 KIE_TASK_INFO_URL = "https://api.kie.ai/api/v1/jobs/recordInfo?taskId={task_id}"
 KIE_VEO_GENERATE_URL = "https://api.kie.ai/api/v1/veo/generate"
 KIE_VEO_INFO_URL = "https://api.kie.ai/api/v1/veo/record-info?taskId={task_id}"
+KIE_FILE_BASE64_UPLOAD_URL = "https://kieai.redpandaai.co/api/file-base64-upload"
 HAILUO_TEXT_MODEL = "hailuo/02-text-to-video-pro"
 HAILUO_IMAGE_MODEL = "hailuo/02-image-to-video-pro"
 KLING_VIDEO_MODEL = "kling-3.0/video"
+MINIMAX_TEXT_MODEL = "minimax-h3/text-to-video"
+MINIMAX_IMAGE_MODEL = "minimax-h3/image-to-video"
+
+# Провайдеры видео в кабинете (KIE)
+VIDEO_PROVIDERS = ("kling", "minimax", "veo", "hailuo")
+VIDEO_PROVIDER_LABELS = {
+    "kling": "Kling 3.0",
+    "minimax": "MiniMax H3",
+    "veo": "Veo 3.1",
+    "hailuo": "Hailuo 02",
+}
+# Правило: реальные фото из референсов канала (люди / животные / персонажи)
+REAL_PHOTO_REFERENCE_RULE = """
+## Правило реальных фото из референсов (обязательно)
+
+Если среди референсов канала есть реальные фотографии (особенно люди или животные):
+
+1. Сначала выбери **наиболее подходящее реальное фото** под сцену поста (ракурс, эмоция, жест, план).
+2. Это фото подаётся как `image_input` / референс: **максимально сохрани лицо, тело, характер персонажа** (человека или животного).
+3. Генеративно редактируй в основном **окружающую сцену**, фон, реквизит, инфографику, свет — не «перерисовывай» человека с нуля.
+4. Если нужен **совершенно другой ракурс** — сначала ищи **другое ваше реальное фото** с таким ракурсом среди референсов.
+5. **Запрещено** «поворачивать», дорисовывать профиль/спину или менять лицо генерацией, если подходящего фото нет: выбери ближайший реальный кадр или сцену без персонажа / с силуэтом без подмены личности.
+6. В промпте для KIE явно укажи: какой референс-фото использовать как основу персонажа и что менять только вокруг него.
+""".strip()
+
+REAL_PERSON_REFERENCE_UNAVAILABLE = "REAL_PERSON_REFERENCE_UNAVAILABLE"
+
+# Подсказки, что в сцене нужен конкретный реальный персонаж (человек / животное)
+_REAL_PERSON_HINT_RE = re.compile(
+    r"(?i)"
+    r"ксени|kseni|"
+    r"женщин|девушк|мужчин|человек|портрет|селфи|лиц[аоеу]|персонаж|"
+    r"бульдог|собак|п[её]с\b|кот\b|кошк|животн|"
+    r"real\s*person|real\s*photo|сохрани\s*(лицо|человека|тело)|"
+    r"максимально\s*сохрани"
+)
+
+_NO_PERSON_FALLBACK_LOCK = (
+    "\n\nВАЖНО — FAIL-SAFE: реальный фото-референс персонажа недоступен внешней модели. "
+    "НЕ изображай конкретного реального человека или животного. "
+    "НЕ подменяй похожим лицом. Только сцена / предметы / инфографика без портрета. "
+    f"Статус: {REAL_PERSON_REFERENCE_UNAVAILABLE}."
+)
+
+
+def append_real_photo_reference_rule(prompt_text: str, *, has_references: bool) -> str:
+    """Добавляет правило реальных фото в image-промпт, если есть референсы."""
+    text = (prompt_text or "").strip()
+    if not has_references:
+        return text
+    if "Правило реальных фото" in text or "максимально сохрани лицо" in text.lower():
+        return text
+    return (text + "\n\n" + REAL_PHOTO_REFERENCE_RULE).strip()
+
+
+class RealPersonReferenceUnavailableError(RuntimeError):
+    """Реальный персонаж нужен, но generation reference не передан модели."""
+
+    def __init__(self, message: str, *, person_label: str = "person"):
+        super().__init__(message)
+        self.code = REAL_PERSON_REFERENCE_UNAVAILABLE
+        self.person_label = person_label
+
+
+MARKET_VIDEO_MODELS = {
+    HAILUO_TEXT_MODEL,
+    HAILUO_IMAGE_MODEL,
+    KLING_VIDEO_MODEL,
+    MINIMAX_TEXT_MODEL,
+    MINIMAX_IMAGE_MODEL,
+}
 KIE_IMAGE_MODEL = "gpt-image-2-text-to-image"
+KIE_IMAGE_TO_IMAGE_MODEL = "gpt-image-2-image-to-image"
 KIE_IMAGE_MODEL_LABEL = "GPT Image 2"
+KIE_IMAGE_TO_IMAGE_LABEL = "GPT Image 2 (image-to-image)"
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -202,16 +276,60 @@ def sanitize_visual_prompt_overlays(prompt_text: str) -> str:
     return re.sub(r'"([^"]+)"', _quote, text)
 
 
+def sanitize_visual_prompt_symbols(prompt_text: str) -> str:
+    """
+    Убирает символы, которые ломают image-валидацию, но часто встречаются
+    в описании стиля (→ в «было → стало», имена файлов, URL).
+    """
+    text = prompt_text or ""
+    replacements = (
+        ("↔", " графическая двусторонняя стрелка-линия "),
+        ("→", " графическая стрелка-линия вправо "),
+        ("←", " графическая стрелка-линия влево "),
+        ("⇒", " графическая стрелка-линия вправо "),
+        ("⇐", " графическая стрелка-линия влево "),
+        ("➜", " графическая стрелка-линия "),
+        ("➡", " графическая стрелка-линия "),
+        ("⟶", " графическая стрелка-линия "),
+    )
+    for src, dst in replacements:
+        text = text.replace(src, dst)
+
+    text = re.sub(r"https?://\S+|www\.\S+", " ", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\b[\w.\-]+\.(?:xlsx?|docx?|pptx?|pdf|png|jpe?g|gif|webp|mp4|mov)\b",
+        "файл",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = text.replace("%", " процентов ")
+    for ch in "$€£₽×−÷=+":
+        text = text.replace(ch, " ")
+
+    def _drop_latin_quote(m: re.Match[str]) -> str:
+        inner = m.group(1)
+        if re.search(r"[A-Za-z]", inner):
+            return ""
+        return m.group(0)
+
+    text = re.sub(r"«([^»]+)»", _drop_latin_quote, text)
+    text = re.sub(r'"([^"]+)"', _drop_latin_quote, text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
+
+
 def validate_and_prepare_image_visual_data(
     visual_data: dict,
     *,
     brand_footer: str = "",
 ) -> tuple[dict, dict]:
     """
-    Проверка image-промпта. Если блокирует только латиница в надписях —
-    санитизация и повторная проверка.
+    Проверка image-промпта. Если блокирует только латиница в надписях
+    или символы стрелок — санитизация и повторная проверка.
     """
     vd = dict(visual_data)
+    # Сразу чистим стрелки из описания стиля / сцены — это не «текст на картинке»
+    vd["prompt_text"] = sanitize_visual_prompt_symbols(vd.get("prompt_text", ""))
     report = validate_visual_prompt(vd, brand_footer=brand_footer)
     if report.get("is_safe"):
         return vd, report
@@ -659,7 +777,7 @@ def build_user_message(data: dict) -> str:
             ref_lines = ""
             if reference_image_names:
                 ref_lines += (
-                    "Загруженные референсы канала (ориентируйся на палитру, композицию, типографику): "
+                    "Загруженные референсы канала (палитра + реальные кадры персонажей): "
                     + ", ".join(reference_image_names[:8])
                     + ".\n"
                 )
@@ -667,6 +785,9 @@ def build_user_message(data: dict) -> str:
                 ref_lines += "URL референсов:\n" + "\n".join(
                     f"- {url}" for url in reference_image_urls[:8]
                 ) + "\n"
+            photo_rule_block = ""
+            if reference_image_urls or reference_image_names:
+                photo_rule_block = "\n\n" + REAL_PHOTO_REFERENCE_RULE + "\n"
             sections.append(
                 "# Визуальный стиль канала (постоянные правила для картинки/видео)\n\n"
                 "Эти правила задают фирменный стиль **этого канала**. "
@@ -674,7 +795,8 @@ def build_user_message(data: dict) -> str:
                 "Если стиль канала конфликтует с рубрикой — **побеждает рубрика** по структуре поста, "
                 "но палитра, шрифты и общая эстетика берутся отсюда.\n\n"
                 f"{visual_style_prompt or 'Промпт визуального стиля не задан — опирайся на рубрику.'}\n\n"
-                f"{ref_lines}".rstrip()
+                f"{ref_lines}"
+                f"{photo_rule_block}".rstrip()
             )
 
         if workspace_theme or brand_site:
@@ -817,6 +939,32 @@ def make_anthropic_request(payload: dict, api_key: str) -> dict:
         raise RuntimeError(f"Ошибка сети при вызове прямого Claude API: {exc}") from exc
 
 
+def _friendly_text_provider_error(exc: BaseException) -> str:
+    """Короткое сообщение для UI без сырого JSON."""
+    text = str(exc or "")
+    low = text.lower()
+    if "429" in text or "rate" in low or "too many" in low:
+        return (
+            "Сервис текста сейчас перегружен (слишком много запросов). "
+            "Подождите 1–2 минуты и нажмите «ИИ генерация» снова. "
+            "Ваш промпт в поле уже сохранён — можно просто нажать «Сохранить канал»."
+        )
+    if "not found" in low and ("model" in low or "claude" in low):
+        return (
+            "Резервная текстовая модель в VseGPT указана неверно. "
+            "Проверьте в .env: VSEGPT_TEXT_MODEL=anthropic/claude-sonnet-4.6"
+        )
+    if "vsegpt" in low and ("400" in text or "401" in text or "403" in text):
+        return "Резерв VseGPT не принял запрос. Проверьте ключ VSEGPT_API_KEY и имя модели в .env."
+    if "kie" in low and ("401" in text or "403" in text):
+        return "KIE отклонил ключ. Проверьте KIE_API_KEY в .env."
+    # Обрезаем длинный JSON
+    short = text
+    if len(short) > 280:
+        short = short[:277] + "…"
+    return short
+
+
 def send_claude_request(payload: dict, api_key: str, provider: str) -> dict:
     if provider == "anthropic":
         return make_anthropic_request(payload, api_key)
@@ -841,13 +989,15 @@ def send_claude_request(payload: dict, api_key: str, provider: str) -> dict:
         import vsegpt_provider as vsegpt
 
         if not vsegpt.is_vsegpt_configured():
-            raise kie_exc
+            raise RuntimeError(_friendly_text_provider_error(kie_exc)) from kie_exc
         try:
             vsegpt_key = vsegpt.get_vsegpt_api_key()
             return vsegpt.send_claude_via_vsegpt(payload, vsegpt_key)
         except Exception as vsegpt_exc:
             raise RuntimeError(
-                f"KIE не ответил ({kie_exc}); резерв VseGPT тоже не сработал ({vsegpt_exc})"
+                _friendly_text_provider_error(kie_exc)
+                + " "
+                + _friendly_text_provider_error(vsegpt_exc)
             ) from vsegpt_exc
 
 
@@ -952,13 +1102,45 @@ def extract_named_code_block(text: str, label_patterns: list[str]) -> str:
     return ""
 
 
+def normalize_video_provider(raw: str | None, default: str = "kling") -> str:
+    """Привести имя провайдера к одному из VIDEO_PROVIDERS."""
+    key = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    aliases = {
+        "kling": "kling",
+        "kling3": "kling",
+        "kling_3": "kling",
+        "kling_3_0": "kling",
+        "minimax": "minimax",
+        "minimax_h3": "minimax",
+        "minimaxh3": "minimax",
+        "hailuo03": "minimax",
+        "hailuo_03": "minimax",
+        "veo": "veo",
+        "veo3": "veo",
+        "veo_3": "veo",
+        "veo3_1": "veo",
+        "veo_3_1": "veo",
+        "hailuo": "hailuo",
+        "hailuo02": "hailuo",
+        "hailuo_02": "hailuo",
+    }
+    resolved = aliases.get(key, key)
+    if resolved in VIDEO_PROVIDERS:
+        return resolved
+    return default if default in VIDEO_PROVIDERS else "kling"
+
+
 def infer_video_model(visual_section: str, prompt_section: str) -> str:
     lowered = f"{visual_section}\n{prompt_section}".lower()
+    if "minimax" in lowered or "hailuo 03" in lowered or "hailuo03" in lowered:
+        return "minimax"
     if "hailuo" in lowered:
         return "hailuo"
     if "kling" in lowered:
         return "kling"
-    return "veo"
+    if "veo" in lowered:
+        return "veo"
+    return "kling"
 
 
 def infer_video_route(visual_section: str, prompt_section: str) -> str:
@@ -1251,7 +1433,7 @@ def enforce_cyrillic_visual_prompt(prompt_text: str, *, kind: str = "image") -> 
 
 
 def filter_public_reference_urls(urls: list[str] | None) -> list[str]:
-    """KIE/VseGPT снаружи не видят localhost — не отправляем такие ссылки."""
+    """Только URL, которые внешний API реально может скачать (не localhost)."""
     out: list[str] = []
     for raw in urls or []:
         u = str(raw or "").strip()
@@ -1264,20 +1446,252 @@ def filter_public_reference_urls(urls: list[str] | None) -> list[str]:
     return out[:8]
 
 
+def is_externally_accessible_url(url: str) -> bool:
+    u = (url or "").strip()
+    if not u.startswith("http"):
+        return False
+    lower = u.lower()
+    return "127.0.0.1" not in lower and "localhost" not in lower
+
+
+def detect_real_person_required(
+    prompt_text: str = "",
+    *,
+    reference_names: list[str] | None = None,
+    local_files: list[dict] | None = None,
+) -> tuple[bool, str]:
+    """
+    Нужен ли реальный персонаж в кадре (reference_required).
+    Возвращает (required, person_label).
+    """
+    blobs: list[str] = [prompt_text or ""]
+    for name in reference_names or []:
+        blobs.append(str(name or ""))
+    for item in local_files or []:
+        if not isinstance(item, dict):
+            continue
+        blobs.append(str(item.get("name") or ""))
+        blobs.append(str(item.get("path") or ""))
+    hay = "\n".join(blobs)
+    if not _REAL_PERSON_HINT_RE.search(hay):
+        # Есть локальные фото-референсы канала — считаем, что персонаж может быть нужен,
+        # если в промпте уже есть правило реальных фото.
+        if local_files and (
+            "Правило реальных фото" in (prompt_text or "")
+            or "максимально сохрани" in (prompt_text or "").lower()
+        ):
+            return True, "person"
+        return False, "none"
+
+    low = hay.lower()
+    if re.search(r"ксени|kseni", low):
+        return True, "Ksenia"
+    if re.search(r"бульдог|bulldog", low):
+        return True, "Bulldog"
+    if re.search(r"собак|п[её]с\b", low):
+        return True, "dog"
+    if re.search(r"кот\b|кошк", low):
+        return True, "cat"
+    return True, "person"
+
+
+def upload_local_file_to_kie_temp(
+    api_key: str,
+    *,
+    file_path: Path | None = None,
+    data_b64: str = "",
+    media_type: str = "image/jpeg",
+    file_name: str = "reference.jpg",
+) -> str:
+    """
+    Нативный KIE File Upload API: base64 → временный публичный downloadUrl.
+    Vision-base64 ≠ generation reference, пока файл не залит сюда.
+    """
+    payload_b64 = (data_b64 or "").strip()
+    if not payload_b64:
+        if not file_path or not Path(file_path).is_file():
+            raise RuntimeError("Нет данных файла для upload в KIE.")
+        raw = Path(file_path).read_bytes()
+        if not raw:
+            raise RuntimeError("Пустой файл референса.")
+        import base64 as _b64
+
+        payload_b64 = _b64.standard_b64encode(raw).decode("ascii")
+        if not media_type or media_type == "application/octet-stream":
+            # лёгкая эвристика по расширению
+            suf = Path(file_path).suffix.lower()
+            media_type = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".webp": "image/webp",
+                ".gif": "image/gif",
+            }.get(suf, "image/jpeg")
+
+    data_url = payload_b64
+    if not data_url.startswith("data:"):
+        data_url = f"data:{media_type or 'image/jpeg'};base64,{payload_b64}"
+
+    safe_name = re.sub(r"[^\w.\-]+", "_", (file_name or "reference.jpg"))[:80] or "reference.jpg"
+    if "." not in safe_name:
+        safe_name += ".jpg"
+
+    body = {
+        "base64Data": data_url,
+        "uploadPath": "smm-channel-refs",
+        "fileName": safe_name,
+    }
+    resp = make_json_request(
+        KIE_FILE_BASE64_UPLOAD_URL,
+        api_key,
+        payload=body,
+        method="POST",
+    )
+    data = resp.get("data") if isinstance(resp, dict) else None
+    if not isinstance(data, dict):
+        raise RuntimeError(f"KIE file upload: неожиданный ответ: {resp}")
+    download_url = (data.get("downloadUrl") or data.get("download_url") or "").strip()
+    if not download_url.startswith("http"):
+        raise RuntimeError(f"KIE file upload: нет downloadUrl: {resp}")
+    if not is_externally_accessible_url(download_url):
+        raise RuntimeError(f"KIE file upload вернул недоступный URL: {download_url}")
+    return download_url
+
+
+def prepare_generation_reference_urls(
+    api_key: str,
+    *,
+    public_urls: list[str] | None = None,
+    local_files: list[dict] | None = None,
+    max_refs: int = 8,
+) -> dict:
+    """
+    Собирает URL, которые image API реально сможет скачать.
+    Локальные файлы → KIE tempfile upload (base64 API).
+    vision_reference (просто наличие файла) ≠ generation_reference.
+    """
+    sent: list[str] = []
+    types: list[str] = []
+    errors: list[str] = []
+
+    for u in filter_public_reference_urls(public_urls):
+        if len(sent) >= max_refs:
+            break
+        sent.append(u)
+        types.append("url")
+
+    for item in local_files or []:
+        if len(sent) >= max_refs:
+            break
+        if not isinstance(item, dict):
+            continue
+        path_raw = (item.get("path") or "").strip()
+        name = (item.get("name") or Path(path_raw).name or "reference.jpg").strip()
+        media_type = (item.get("media_type") or "image/jpeg").strip()
+        data_b64 = (item.get("data_b64") or "").strip()
+        try:
+            url = upload_local_file_to_kie_temp(
+                api_key,
+                file_path=Path(path_raw) if path_raw else None,
+                data_b64=data_b64,
+                media_type=media_type,
+                file_name=name,
+            )
+            sent.append(url)
+            types.append("base64_upload")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{name}: {exc}")
+
+    gen_type = "none"
+    if types:
+        if all(t == "url" for t in types):
+            gen_type = "url"
+        elif all(t == "base64_upload" for t in types):
+            gen_type = "base64"
+        else:
+            gen_type = "mixed"
+
+    return {
+        "urls": sent,
+        "count": len(sent),
+        "generation_reference_type": gen_type,
+        "externally_accessible": bool(sent) and all(is_externally_accessible_url(u) for u in sent),
+        "upload_errors": errors,
+        "vision_local_count": len(local_files or []),
+        "public_url_candidates": len(filter_public_reference_urls(public_urls)),
+    }
+
+
+def log_generation_reference_audit(
+    *,
+    reference_required: bool,
+    person_label: str,
+    vision_count: int,
+    prepared: dict,
+) -> None:
+    """Обязательный лог перед image generation API call."""
+    urls = prepared.get("urls") or []
+    lines = [
+        "=== GENERATION REFERENCE AUDIT ===",
+        f"REAL PERSON REQUIRED: {'yes' if reference_required else 'no'}",
+        f"PERSON: {person_label or 'none'}",
+        f"VISION REFERENCES: {vision_count}",
+        f"GENERATION REFERENCES: {prepared.get('count', 0)}",
+        f"GENERATION REFERENCE TYPE: {prepared.get('generation_reference_type', 'none')}",
+        f"EXTERNALLY ACCESSIBLE: {'yes' if prepared.get('externally_accessible') else 'no'}",
+        "IMAGE_INPUT SENT:",
+    ]
+    if urls:
+        for u in urls:
+            lines.append(f"  - {u}")
+    else:
+        lines.append("  - (none)")
+    errs = prepared.get("upload_errors") or []
+    if errs:
+        lines.append("UPLOAD ERRORS:")
+        for e in errs[:5]:
+            lines.append(f"  - {e}")
+    lines.append("=== END AUDIT ===")
+    print("\n".join(lines), flush=True)
+
+
+def strip_real_person_for_failsafe(prompt_text: str) -> str:
+    """Запрет генерации конкретного человека без реального reference."""
+    text = (prompt_text or "").strip()
+    if REAL_PERSON_REFERENCE_UNAVAILABLE in text:
+        return text
+    return (text + _NO_PERSON_FALLBACK_LOCK).strip()
+
+
 def build_image_payload(
     visual_data: dict,
     *,
     reference_image_urls: list[str] | None = None,
 ) -> dict:
     prompt = enforce_cyrillic_visual_prompt(visual_data["prompt_text"], kind="image")
+    ref_urls = filter_public_reference_urls(reference_image_urls)
+    aspect = visual_data.get("aspect_ratio") or "4:5"
+    resolution = visual_data.get("resolution") or "1K"
+
+    if ref_urls:
+        # Реальные фото → нативная image-to-image модель KIE (input_urls)
+        input_payload = {
+            "prompt": prompt,
+            "input_urls": ref_urls,
+            "aspect_ratio": aspect if aspect != "auto" else "auto",
+        }
+        if resolution in ("1K", "2K", "4K"):
+            input_payload["resolution"] = resolution
+        return {
+            "model": KIE_IMAGE_TO_IMAGE_MODEL,
+            "input": input_payload,
+        }
+
     input_payload = {
         "prompt": prompt,
-        "aspect_ratio": visual_data["aspect_ratio"],
-        "resolution": visual_data["resolution"],
+        "aspect_ratio": aspect,
+        "resolution": resolution,
     }
-    ref_urls = filter_public_reference_urls(reference_image_urls)
-    if ref_urls:
-        input_payload["image_input"] = ref_urls
     return {
         "model": KIE_IMAGE_MODEL,
         "input": input_payload,
@@ -1292,14 +1706,26 @@ def build_base_image_payload(
     prompt = enforce_cyrillic_visual_prompt(
         visual_data["image_prompt_text"], kind="image"
     )
+    ref_urls = filter_public_reference_urls(reference_image_urls)
+    aspect = visual_data.get("image_prompt_aspect_ratio", "9:16")
+    resolution = visual_data.get("image_prompt_resolution", "1K")
+    if ref_urls:
+        input_payload = {
+            "prompt": prompt,
+            "input_urls": ref_urls,
+            "aspect_ratio": aspect if aspect != "auto" else "auto",
+        }
+        if resolution in ("1K", "2K", "4K"):
+            input_payload["resolution"] = resolution
+        return {
+            "model": KIE_IMAGE_TO_IMAGE_MODEL,
+            "input": input_payload,
+        }
     input_payload = {
         "prompt": prompt,
-        "aspect_ratio": visual_data.get("image_prompt_aspect_ratio", "9:16"),
-        "resolution": visual_data.get("image_prompt_resolution", "1K"),
+        "aspect_ratio": aspect,
+        "resolution": resolution,
     }
-    ref_urls = filter_public_reference_urls(reference_image_urls)
-    if ref_urls:
-        input_payload["image_input"] = ref_urls
     return {
         "model": KIE_IMAGE_MODEL,
         "input": input_payload,
@@ -1339,6 +1765,56 @@ def build_hailuo_video_payload(visual_data: dict, base_image_url: str | None = N
             "prompt": visual_data["video_prompt_text"],
             "prompt_optimizer": True,
             "nsfw_checker": False,
+        },
+    }
+
+
+def _minimax_duration(visual_data: dict, default: int = 6) -> int:
+    raw_prompt = (visual_data.get("video_prompt_text") or "").strip()
+    duration = infer_duration_seconds(raw_prompt, default=default)
+    return max(4, min(15, int(duration)))
+
+
+def _minimax_aspect_ratio(visual_data: dict) -> str:
+    allowed = {"21:9", "16:9", "4:3", "1:1", "3:4", "9:16"}
+    ratio = (
+        (visual_data.get("aspect_ratio") or "").strip()
+        or (visual_data.get("image_prompt_aspect_ratio") or "").strip()
+        or "9:16"
+    )
+    return ratio if ratio in allowed else "9:16"
+
+
+def build_minimax_video_payload(
+    visual_data: dict, base_image_url: str | None = None
+) -> dict:
+    """MiniMax H3 (Hailuo 03) через KIE Market createTask."""
+    raw_prompt = enforce_cyrillic_visual_prompt(
+        (visual_data.get("video_prompt_text") or "").strip(), kind="video"
+    )
+    if len(raw_prompt) > 7000:
+        raw_prompt = raw_prompt[:7000].rstrip() + "…"
+    duration = _minimax_duration(visual_data, default=6)
+    resolution = "768P"  # быстрее и дешевле для SMM; 2K при необходимости позже
+
+    if base_image_url:
+        return {
+            "model": MINIMAX_IMAGE_MODEL,
+            "input": {
+                "prompt": raw_prompt,
+                "first_frame_url": base_image_url,
+                "duration": duration,
+                "resolution": resolution,
+            },
+        }
+
+    return {
+        "model": MINIMAX_TEXT_MODEL,
+        "input": {
+            "prompt": raw_prompt,
+            "aspect_ratio": _minimax_aspect_ratio(visual_data),
+            "duration": duration,
+            "resolution": resolution,
         },
     }
 
@@ -1394,12 +1870,15 @@ def build_video_payload(
 ) -> dict:
     provider = video_provider
     if provider == "auto":
-        provider = visual_data.get("video_model", "veo")
+        provider = visual_data.get("video_model", "kling")
+    provider = normalize_video_provider(provider, default="kling")
 
     if provider == "veo":
         return build_veo_video_payload(visual_data, base_image_url)
     if provider == "hailuo":
         return build_hailuo_video_payload(visual_data, base_image_url)
+    if provider == "minimax":
+        return build_minimax_video_payload(visual_data, base_image_url)
     if provider == "kling":
         return build_kling_video_payload(
             visual_data, base_image_url, mode=kling_mode
@@ -1413,7 +1892,8 @@ def create_image_task(payload: dict, api_key: str) -> dict:
 
 
 def create_video_task(payload: dict, api_key: str) -> dict:
-    if payload.get("model") in {HAILUO_TEXT_MODEL, HAILUO_IMAGE_MODEL, KLING_VIDEO_MODEL}:
+    model = (payload.get("model") or "").strip()
+    if model in MARKET_VIDEO_MODELS or model.startswith("minimax-h3/"):
         return make_json_request(KIE_IMAGE_TASK_URL, api_key, payload=payload, method="POST")
     return make_json_request(KIE_VEO_GENERATE_URL, api_key, payload=payload, method="POST")
 
@@ -1453,19 +1933,108 @@ def generate_image_url_with_fallback(
     image_vd: dict,
     *,
     reference_image_urls: list[str] | None = None,
+    reference_local_files: list[dict] | None = None,
+    reference_image_names: list[str] | None = None,
     kie_key: str | None = None,
+    allow_no_person_fallback: bool = True,
 ) -> tuple[str, str]:
     """
-    Картинка: сначала VseGPT (таймаут 3 мин), при ошибке/тишине — KIE.
-    Текст поста идёт отдельно через KIE (см. send_claude_request).
-    Возвращает (url, метка провайдера).
+    Картинка с проверкой generation references ПЕРЕД API call.
+
+    vision_reference != generation_reference:
+    локальные файлы заливаются в KIE tempfile (base64 upload), затем
+    gpt-image-2-image-to-image с input_urls.
+
+    VseGPT не принимает image refs — при наличии generation refs идём
+    сразу в KIE. Если нужен реальный персонаж, а refs нет — fail-safe
+    (сцена без человека) или ошибка REAL_PERSON_REFERENCE_UNAVAILABLE.
     """
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
     import vsegpt_provider as vsegpt
 
     key = kie_key or get_api_key()
-    ref_urls = filter_public_reference_urls(reference_image_urls)
+    prompt_text = image_vd.get("prompt_text", "") or ""
+    local_files = list(reference_local_files or [])
+    names = list(reference_image_names or [])
+    for item in local_files:
+        if isinstance(item, dict) and (item.get("name") or "").strip():
+            names.append(str(item["name"]).strip())
+
+    reference_required, person_label = detect_real_person_required(
+        prompt_text,
+        reference_names=names,
+        local_files=local_files,
+    )
+    # Если есть локальные фото канала — пытаемся всегда сделать их generation refs
+    prepared = prepare_generation_reference_urls(
+        key,
+        public_urls=reference_image_urls,
+        local_files=local_files,
+        max_refs=8,
+    )
+    log_generation_reference_audit(
+        reference_required=reference_required or bool(local_files),
+        person_label=person_label if (reference_required or local_files) else "none",
+        vision_count=len(local_files),
+        prepared=prepared,
+    )
+
+    gen_urls = list(prepared.get("urls") or [])
+    available = bool(gen_urls) and bool(prepared.get("externally_accessible"))
+
+    if reference_required and not available:
+        # Запрет: текстовое описание внешности ≠ reference
+        msg = (
+            f"{REAL_PERSON_REFERENCE_UNAVAILABLE}: нужен реальный фото-референс "
+            f"({person_label}), но image API не получила доступный generation reference. "
+            "vision_reference ≠ generation_reference; localhost URL не считаются."
+        )
+        if not allow_no_person_fallback:
+            raise RealPersonReferenceUnavailableError(msg, person_label=person_label)
+        print(
+            f"FAIL-SAFE: {msg} → генерация сцены БЕЗ конкретного человека/животного.",
+            flush=True,
+        )
+        image_vd = dict(image_vd)
+        image_vd["prompt_text"] = strip_real_person_for_failsafe(prompt_text)
+        gen_urls = []
+        # помечаем в промпте — дальше text-to-image без input_urls
+
+    # Есть реальные refs → только KIE image-to-image (VseGPT refs не умеет)
+    if gen_urls:
+        try:
+            image_payload = build_image_payload(image_vd, reference_image_urls=gen_urls)
+            # Финальная проверка непосредственно перед API call
+            sent = (image_payload.get("input") or {}).get("input_urls") or []
+            if not sent:
+                raise RealPersonReferenceUnavailableError(
+                    f"{REAL_PERSON_REFERENCE_UNAVAILABLE}: payload без input_urls.",
+                    person_label=person_label,
+                )
+            print(
+                "IMAGE_INPUT SENT (pre-API): "
+                + ", ".join(str(u) for u in sent),
+                flush=True,
+            )
+            task_create = create_image_task(image_payload, key)
+            task_id = task_create.get("data", {}).get("taskId", "")
+            if not task_id:
+                raise RuntimeError("KIE не вернул taskId для image-to-image.")
+            task_result = wait_for_task_result(task_id, key)
+            write_image_outputs(image_vd, image_payload, task_create, task_result)
+            urls = extract_result_urls(task_result)
+            if urls:
+                return urls[0], KIE_IMAGE_TO_IMAGE_LABEL
+            raise RuntimeError("KIE image-to-image: задача без ссылки на картинку.")
+        except RealPersonReferenceUnavailableError:
+            raise
+        except Exception as kie_i2i_exc:
+            raise RuntimeError(
+                f"KIE image-to-image (refs): {kie_i2i_exc}"
+            ) from kie_i2i_exc
+
+    # Без generation refs — обычный путь: VseGPT → KIE text-to-image
     vsegpt_error = ""
     timeout_sec = int(vsegpt.get_vsegpt_image_timeout_sec())
 
@@ -1490,7 +2059,8 @@ def generate_image_url_with_fallback(
         vsegpt_error = "VseGPT не настроен (нет VSEGPT_API_KEY)."
 
     try:
-        image_payload = build_image_payload(image_vd, reference_image_urls=ref_urls)
+        image_payload = build_image_payload(image_vd, reference_image_urls=None)
+        print("IMAGE_INPUT SENT (pre-API): (none — text-to-image)", flush=True)
         task_create = create_image_task(image_payload, key)
         task_id = task_create.get("data", {}).get("taskId", "")
         if not task_id:
@@ -1805,8 +2375,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--video-provider",
         default="auto",
-        choices=["auto", "veo", "hailuo", "kling"],
-        help="Какую видеомодель использовать: auto, veo, hailuo или kling.",
+        choices=["auto", "veo", "hailuo", "kling", "minimax"],
+        help="Какую видеомодель использовать: auto, veo, hailuo, kling или minimax.",
     )
     parser.add_argument(
         "--draft-status",

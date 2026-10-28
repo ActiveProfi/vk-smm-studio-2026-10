@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 REF_ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_REFERENCES = 8
 MAX_REFERENCES_FOR_AI = 4
+# Референсы с телефона часто 8–20 МБ — сжимаем до разумного размера для API
+REF_MAX_SIDE_PX = 2048
+REF_JPEG_QUALITY = 88
 MIME_BY_EXT = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -27,6 +30,59 @@ MIME_BY_EXT = {
     ".webp": "image/webp",
     ".gif": "image/gif",
 }
+
+
+def save_uploaded_reference(file_storage, dest_path: Path) -> Path:
+    """
+    Сохраняет референс на диск. Крупные фото уменьшает (длинная сторона ≤ 2048 px)
+    и сохраняет как JPEG, чтобы не упираться в лимит загрузки.
+    GIF не трогаем (анимация). Возвращает итоговый путь (может сменить расширение).
+    """
+    dest_path = Path(dest_path)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    ext = dest_path.suffix.lower()
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError("Пустой файл.")
+
+    # GIF оставляем как есть
+    if ext == ".gif" or raw[:6] in (b"GIF87a", b"GIF89a"):
+        dest_path.write_bytes(raw)
+        return dest_path
+
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        img = Image.open(BytesIO(raw))
+        img.load()
+        # Прозрачность → RGB на белом
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            rgba = img.convert("RGBA")
+            background = Image.new("RGB", rgba.size, (255, 255, 255))
+            background.paste(rgba, mask=rgba.split()[-1])
+            img = background
+        else:
+            img = img.convert("RGB")
+
+        w, h = img.size
+        longest = max(w, h)
+        if longest > REF_MAX_SIDE_PX:
+            scale = REF_MAX_SIDE_PX / float(longest)
+            img = img.resize(
+                (max(1, int(w * scale)), max(1, int(h * scale))),
+                Image.Resampling.LANCZOS,
+            )
+
+        out_path = dest_path.with_suffix(".jpg")
+        img.save(out_path, format="JPEG", quality=REF_JPEG_QUALITY, optimize=True)
+        return out_path
+    except Exception:
+        # Если Pillow не смог — сохраняем оригинал
+        dest_path.write_bytes(raw)
+        return dest_path
+
 
 
 def detect_image_media_type(file_path: Path) -> str | None:
@@ -149,6 +205,36 @@ def load_reference_images_b64(
     return out
 
 
+def resolve_reference_local_files(
+    upload_root: Path,
+    user_id: int,
+    refs: list[dict],
+    *,
+    max_count: int = MAX_REFERENCES,
+) -> list[dict]:
+    """
+    Локальные пути референсов для generation (не путать с vision base64).
+    Элемент: {name, path, media_type} — path абсолютный на диске.
+    """
+    out: list[dict] = []
+    for ref in refs[:max_count]:
+        rel = (ref.get("path") or "").strip()
+        if not rel:
+            continue
+        file_path = (upload_root / str(user_id) / rel).resolve()
+        if not file_path.is_file():
+            continue
+        media_type = detect_image_media_type(file_path) or "image/jpeg"
+        out.append(
+            {
+                "name": (ref.get("name") or file_path.name).strip(),
+                "path": str(file_path),
+                "media_type": media_type,
+            }
+        )
+    return out
+
+
 def build_style_preview_prompt(
     *,
     name: str,
@@ -164,6 +250,12 @@ def build_style_preview_prompt(
         if footer
         else "Подпись внизу не добавлять.\n"
     )
+    # Стрелки →← в описании стиля («было → стало») — не надписи в кадре;
+    # для image-промпта заменяем на графическое описание.
+    style_clean = agent.sanitize_visual_prompt_symbols(
+        (visual_style_prompt or "").strip()
+        or "аккуратная инфографика, светлый фон, крупная кириллица"
+    )
     return (
         "Тестовая инфографика для проверки фирменного стиля VK-канала.\n"
         "Это не пост — покажи типичный визуальный кадр канала.\n\n"
@@ -171,11 +263,13 @@ def build_style_preview_prompt(
         f"Тематика: {theme or 'не указана'}\n"
         f"Описание: {description or 'не указано'}\n\n"
         "Обязательный стиль канала:\n"
-        f"{(visual_style_prompt or '').strip() or 'аккуратная инфографика, светлый фон, крупная кириллица'}\n\n"
+        f"{style_clean}\n\n"
         "Композиция примера:\n"
         "1. Заголовок вверху: «Пример оформления канала»\n"
         "2. Одна короткая строка по центру: «Так будут выглядеть ваши посты»\n"
-        "3. Минимум элементов, без лишнего текста\n\n"
+        "3. Можно показать переход «было» и «стало» через нарисованную стрелку-линию "
+        "(не символ в тексте, а графический элемент)\n"
+        "4. Минимум элементов, без лишнего текста\n\n"
         f"{footer_line}"
         "Формат 4:5. Все смысловые надписи только кириллицей, каждую фразу в «ёлочках». "
         "Крупный рубленый шрифт, высокий контраст, без латиницы в надписях."
@@ -190,6 +284,8 @@ def generate_style_preview_image(
     visual_style_prompt: str = "",
     brand_site: str = "",
     reference_image_urls: list[str] | None = None,
+    reference_local_files: list[dict] | None = None,
+    reference_image_names: list[str] | None = None,
     on_progress=None,
 ) -> str:
     style = (visual_style_prompt or "").strip()
@@ -214,6 +310,13 @@ def generate_style_preview_image(
         visual_style_prompt=style,
         brand_site=brand_site.strip(),
     )
+    local_files = list(reference_local_files or [])
+    has_refs = bool(local_files) or bool(
+        agent.filter_public_reference_urls(reference_image_urls)
+    )
+    prompt_text = agent.append_real_photo_reference_rule(
+        prompt_text, has_references=has_refs
+    )
     image_vd = {
         "prompt_text": prompt_text,
         "aspect_ratio": "4:5",
@@ -236,12 +339,14 @@ def generate_style_preview_image(
             pass
 
     kie_key = agent.get_api_key()
-    ref_urls = agent.filter_public_reference_urls(reference_image_urls)
     try:
         image_url, provider_label = agent.generate_image_url_with_fallback(
             image_vd,
-            reference_image_urls=ref_urls,
+            reference_image_urls=reference_image_urls,
+            reference_local_files=local_files,
+            reference_image_names=reference_image_names,
             kie_key=kie_key,
+            allow_no_person_fallback=True,
         )
     except RuntimeError as exc:
         raise RuntimeError(str(exc)) from exc

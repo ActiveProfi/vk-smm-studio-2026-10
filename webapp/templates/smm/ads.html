@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}ВК Реклама · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h4 mb-1">ВК Реклама</h1>
+    <p class="text-muted small mb-0">
+      Канал: <strong>{{ workspace.name if workspace else '—' }}</strong>
+      {% if account_id %}
+        · кабинет: <code>{{ account_id }}</code>
+      {% endif %}
+      {% if has_saved_token %}
+        · токен сохранён
+      {% endif %}
+    </p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.ads_cabinets') }}">Все кабинеты</a>
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.ads_report') }}">Отчёт Ads</a>
+    {% if workspace %}
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.ads_connect', workspace_id=workspace.id) }}">Переподключить</a>
+    {% endif %}
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.stats') }}">Статистика постов</a>
+  </div>
+</div>
+
+{% if plan_warning %}
+<div class="alert alert-warning small">{{ plan_warning }}</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+<p class="text-muted small mb-4">
+  Подключите кабинет в мастере:
+  <a href="{{ url_for('smm.ads_connect', workspace_id=workspace.id if workspace else None) }}">Подключить ВК Ads</a>
+  — подсказка, какие данные взять в ads.vk.com.
+</p>
+{% elif data %}
+
+{% if data.warnings %}
+<div class="alert alert-warning small">
+  {% for w in data.warnings %}
+  <div>{{ w }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Кампаний</div>
+      <div class="stat-value">{{ data.count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Запущены</div>
+      <div class="stat-value">{{ data.active_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Остановлены</div>
+      <div class="stat-value">{{ data.blocked_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Сумма дневных бюджетов</div>
+      <div class="stat-value">
+        {% if data.total_day_budget is not none %}
+          {{ '%.0f'|format(data.total_day_budget) }} ₽
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="text-muted small">где лимит задан</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel mb-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h2 class="h6 mb-0">Кампании</h2>
+    <a class="small" href="{{ data.cabinet_url }}" target="_blank" rel="noopener">Открыть ads.vk.com</a>
+  </div>
+  {% if data.campaigns %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Название</th>
+          <th>Статус</th>
+          <th>Цель</th>
+          <th>Дневной бюджет</th>
+          <th>Общий бюджет</th>
+          <th>Период</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in data.campaigns %}
+        <tr>
+          <td>
+            <strong>{{ c.name }}</strong>
+            <div class="text-muted small">id {{ c.id }}</div>
+          </td>
+          <td>
+            {% if c.status == 'active' %}
+              <span class="badge text-bg-success">{{ c.status_label }}</span>
+            {% elif c.status == 'blocked' %}
+              <span class="badge text-bg-secondary">{{ c.status_label }}</span>
+            {% else %}
+              <span class="badge text-bg-light text-dark">{{ c.status_label }}</span>
+            {% endif %}
+          </td>
+          <td class="small">{{ c.objective or '—' }}</td>
+          <td>
+            {% if c.budget_limit_day is not none %}{{ '%.0f'|format(c.budget_limit_day) }} ₽{% else %}—{% endif %}
+          </td>
+          <td>
+            {% if c.budget_limit is not none %}{{ '%.0f'|format(c.budget_limit) }} ₽{% else %}—{% endif %}
+          </td>
+          <td class="small text-muted">
+            {% if c.date_start or c.date_end %}
+              {{ c.date_start or '…' }} → {{ c.date_end or '…' }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small mb-0">Список пуст.</p>
+  {% endif %}
+</div>
+
+<p class="text-muted small">
+  Первая версия модуля: просмотр кампаний и бюджетов. Создание объявлений и расходы по дням — в следующих обновлениях.
+  Access-токен обновляется автоматически через refresh_token (примерно раз в сутки).
+</p>
+{% endif %}
+{% endblock %}

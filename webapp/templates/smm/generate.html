@@ -147,8 +147,51 @@
       <div class="col-12">
         <div class="form-check">{{ form.enable_relevance(class="form-check-input") }} {{ form.enable_relevance.label(class="form-check-label") }}</div>
         <div class="form-check">{{ form.generate_image(class="form-check-input") }} {{ form.generate_image.label(class="form-check-label") }}</div>
-        <div class="form-check">{{ form.generate_video(class="form-check-input") }} {{ form.generate_video.label(class="form-check-label") }}</div>
-        <div class="form-text ms-4 mb-2">Видео через Kling занимает 2–6 минут. Ход работы будет виден на экране прогресса.</div>
+        <div class="form-check">{{ form.generate_video(class="form-check-input", id="generate_video") }} {{ form.generate_video.label(class="form-check-label") }}</div>
+        <div class="ms-4 mb-2" id="video-provider-wrap">
+          {{ form.video_provider.label(class="form-label small mb-1") }}
+          {{ form.video_provider(class="form-select form-select-sm", style="max-width:280px") }}
+          <div class="form-text">Видео через KIE: 2–8 минут в зависимости от модели.</div>
+        </div>
+        <div class="ms-0 mb-3 border rounded p-3 bg-light" id="video-brief-panel" style="display:none">
+          <div class="fw-semibold mb-1">Подсказка для видео (скилл качества)</div>
+          <p class="small text-muted mb-3 mb-md-2">
+            Кратко заполните блоки — приложение само соберёт полный промпт по формуле:
+            объект → действие → место → камера → свет → стиль.
+            Пустые поля допишет само. Длительность и формат задаёт нейросеть в параметрах, не в тексте.
+          </p>
+          <div class="row g-2">
+            <div class="col-md-6">
+              {{ form.video_object.label(class="form-label small mb-0") }}
+              {{ form.video_object(class="form-control form-control-sm") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.video_action.label(class="form-label small mb-0") }}
+              {{ form.video_action(class="form-control form-control-sm") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.video_place.label(class="form-label small mb-0") }}
+              {{ form.video_place(class="form-control form-control-sm") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.video_camera.label(class="form-label small mb-0") }}
+              {{ form.video_camera(class="form-select form-select-sm") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.video_light.label(class="form-label small mb-0") }}
+              {{ form.video_light(class="form-select form-select-sm") }}
+            </div>
+            <div class="col-md-6">
+              {{ form.video_style.label(class="form-label small mb-0") }}
+              {{ form.video_style(class="form-select form-select-sm") }}
+            </div>
+            <div class="col-12">
+              {{ form.video_negative.label(class="form-label small mb-0") }}
+              {{ form.video_negative(class="form-control form-control-sm") }}
+              <div class="form-text">Что нельзя показывать в ролике (запреты).</div>
+            </div>
+          </div>
+        </div>
         <div class="form-check">{{ form.cta(class="form-check-input") }} {{ form.cta.label(class="form-check-label") }}</div>
       </div>
       <div class="col-12">
@@ -306,7 +349,14 @@
     if (btnGenerate) btnGenerate.disabled = true;
   }
 
-  const VISUAL_STEPS = new Set(["visual_prepare", "image_gpt_image_2", "video_kling"]);
+  const VISUAL_STEPS = new Set([
+    "visual_prepare",
+    "image_gpt_image_2",
+    "video_kling",
+    "video_minimax",
+    "video_veo",
+    "video_hailuo",
+  ]);
 
   function renderProgressLog(job) {
     if (!progressLog || !Array.isArray(job.log)) return;
@@ -318,12 +368,29 @@
 
   function updateVisualHint(step) {
     if (!progressHint) return;
-    if (step === "visual_prepare" || step === "image_gpt_image_2" || step === "video_kling") {
+    if (VISUAL_STEPS.has(step)) {
       progressHint.textContent = "Идёт генерация визуала. Это может занять несколько минут — не закрывайте вкладку.";
     } else {
       progressHint.textContent = "Не закрывайте вкладку, пока идёт работа.";
     }
   }
+
+  (function bindVideoProviderToggle() {
+    const cb = document.getElementById("generate_video");
+    const wrap = document.getElementById("video-provider-wrap");
+    const brief = document.getElementById("video-brief-panel");
+    if (!cb) return;
+    const sync = () => {
+      const on = cb.checked;
+      if (wrap) {
+        wrap.style.opacity = on ? "1" : "0.45";
+        wrap.style.pointerEvents = on ? "auto" : "none";
+      }
+      if (brief) brief.style.display = on ? "block" : "none";
+    };
+    cb.addEventListener("change", sync);
+    sync();
+  })();
 
   function closeProgress() {
     overlay?.classList.add("d-none");

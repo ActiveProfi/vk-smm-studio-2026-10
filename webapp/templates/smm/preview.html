@@ -77,6 +77,61 @@
             {% if draft.image_url or draft.video_url %}Видео в посте{% else %}Сгенерировать видео{% endif %}
           </label>
         </div>
+        <div class="mt-2" id="vis-video-provider-wrap">
+          <label class="form-label small mb-1" for="vis-video-provider">Нейросеть для видео</label>
+          <select class="form-select form-select-sm" id="vis-video-provider" style="max-width:280px">
+            <option value="kling" selected>Kling 3.0</option>
+            <option value="minimax">MiniMax H3</option>
+            <option value="veo">Veo 3.1</option>
+            <option value="hailuo">Hailuo 02</option>
+          </select>
+        </div>
+        <div class="mt-2 border rounded p-2 bg-light" id="video-brief-panel" style="display:none">
+          <div class="fw-semibold small mb-1">Подсказка для видео</div>
+          <p class="small text-muted mb-2">
+            Кратко: персонаж, действие, место. Остальное (камера, свет, стиль) — авто или выберите сами.
+          </p>
+          <div class="mb-1">
+            <label class="form-label small mb-0" for="vb-object">Персонаж / объект</label>
+            <input class="form-control form-control-sm" id="vb-object" placeholder="кто или что в кадре">
+          </div>
+          <div class="mb-1">
+            <label class="form-label small mb-0" for="vb-action">Действие</label>
+            <input class="form-control form-control-sm" id="vb-action" placeholder="что происходит">
+          </div>
+          <div class="mb-1">
+            <label class="form-label small mb-0" for="vb-place">Место</label>
+            <input class="form-control form-control-sm" id="vb-place" placeholder="где и когда">
+          </div>
+          <div class="mb-1">
+            <label class="form-label small mb-0" for="vb-camera">Камера</label>
+            <select class="form-select form-select-sm" id="vb-camera">
+              {% for val, label in video_camera_choices %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-1">
+            <label class="form-label small mb-0" for="vb-light">Свет</label>
+            <select class="form-select form-select-sm" id="vb-light">
+              {% for val, label in video_light_choices %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-1">
+            <label class="form-label small mb-0" for="vb-style">Стиль</label>
+            <select class="form-select form-select-sm" id="vb-style">
+              {% for val, label in video_style_choices %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-0">
+            <label class="form-label small mb-0" for="vb-negative">Запреты</label>
+            <input class="form-control form-control-sm" id="vb-negative" value="текст, надписи, логотипы, водяной знак">
+          </div>
+        </div>
         <div id="visual-selection-status" class="small text-muted mt-1"></div>
       </div>
       {% if not draft.image_url and not draft.video_url %}
@@ -391,6 +446,31 @@
   const hasDraftImage = {{ 'true' if draft.image_url else 'false' }};
   const hasDraftVideo = {{ 'true' if draft.video_url else 'false' }};
 
+  function syncVideoBriefPanel() {
+    const panel = document.getElementById("video-brief-panel");
+    const wrap = document.getElementById("vis-video-provider-wrap");
+    const on = !!visVideo?.checked;
+    if (panel) panel.style.display = on ? "block" : "none";
+    if (wrap) {
+      wrap.style.opacity = on ? "1" : "0.45";
+      wrap.style.pointerEvents = on ? "auto" : "none";
+    }
+  }
+  visVideo?.addEventListener("change", syncVideoBriefPanel);
+  syncVideoBriefPanel();
+
+  function collectVideoBrief() {
+    return {
+      object: document.getElementById("vb-object")?.value || "",
+      action: document.getElementById("vb-action")?.value || "",
+      place: document.getElementById("vb-place")?.value || "",
+      camera: document.getElementById("vb-camera")?.value || "",
+      light: document.getElementById("vb-light")?.value || "",
+      style: document.getElementById("vb-style")?.value || "",
+      negative: document.getElementById("vb-negative")?.value || "",
+    };
+  }
+
   btnVisual?.addEventListener("click", async () => {
     let generate_image = !!document.getElementById("vis-image")?.checked;
     let generate_video = !!document.getElementById("vis-video")?.checked;
@@ -425,7 +505,12 @@
           "X-CSRFToken": csrf,
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify({ generate_image, generate_video }),
+        body: JSON.stringify({
+          generate_image,
+          generate_video,
+          video_provider: document.getElementById("vis-video-provider")?.value || "kling",
+          video_brief: collectVideoBrief(),
+        }),
       });
       const data = await res.json();
       if (!data.ok || !data.job_id) {

@@ -7,10 +7,17 @@
 <div class="panel" style="max-width:860px">
   <form method="post" id="rubric-form">
     {{ form.hidden_tag() }}
+    {{ form.code(type="hidden", id="code") }}
     <div class="row g-3">
-      <div class="col-md-4">{{ form.code.label(class="form-label") }}{{ form.code(class="form-control", id="code") }}</div>
-      <div class="col-md-5">{{ form.title.label(class="form-label") }}{{ form.title(class="form-control", id="title") }}</div>
-      <div class="col-md-3">{{ form.sort_order.label(class="form-label") }}{{ form.sort_order(class="form-control") }}</div>
+      <div class="col-md-8">
+        {{ form.title.label(class="form-label") }}
+        {{ form.title(class="form-control", id="title") }}
+        <div class="form-text">
+          Технический код создаётся сам из названия
+          {% if rubric and rubric.code %}(сейчас: <code>{{ rubric.code }}</code>){% else %}после сохранения{% endif %}.
+        </div>
+      </div>
+      <div class="col-md-4">{{ form.sort_order.label(class="form-label") }}{{ form.sort_order(class="form-control") }}</div>
       <div class="col-12">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
           {{ form.prompt_text.label(class="form-label mb-0") }}
@@ -19,10 +26,10 @@
         {{ form.prompt_text(class="form-control", id="prompt_text") }}
         <div class="form-text">
           Опишите структуру поста, тон, что можно/нельзя писать <strong>и стиль картинки</strong> для этой рубрики.
-          Кнопка «ИИ генерация» создаёт промпт с нуля или улучшает уже написанный — с учётом тематики и базы знаний канала.
-          После генерации нажмите «Сохранить рубрику».
+          Черновик текста автоматически сохраняется в браузере, пока вы не нажмёте «Сохранить рубрику».
         </div>
         <span class="small text-muted" id="ai-rubric-status"></span>
+        <span class="small text-muted d-block" id="draft-status"></span>
       </div>
       <div class="col-12 form-check ms-2">{{ form.is_active(class="form-check-input") }} {{ form.is_active.label(class="form-check-label") }}</div>
       <div class="col-12">
@@ -39,14 +46,59 @@
   const aiUrl = "{{ url_for('workspaces.ai_generate_rubric', workspace_id=workspace.id) }}";
   const btn = document.getElementById("btn-ai-rubric");
   const textarea = document.getElementById("prompt_text");
+  const titleEl = document.getElementById("title");
+  const codeEl = document.getElementById("code");
   const statusEl = document.getElementById("ai-rubric-status");
+  const draftStatus = document.getElementById("draft-status");
+  const form = document.getElementById("rubric-form");
+  const draftKey = "rubric_draft_ws{{ workspace.id }}_r{% if rubric %}{{ rubric.id }}{% else %}new{% endif %}";
+  const isEdit = {{ 'true' if rubric else 'false' }};
+
+  // Восстановить черновик (новые рубрики и правки без сохранённого промпта)
+  try {
+    const raw = localStorage.getItem(draftKey);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      if (draft && typeof draft === "object") {
+        if (!isEdit && titleEl && !titleEl.value && draft.title) titleEl.value = draft.title;
+        if (textarea && draft.prompt && (!textarea.value || textarea.value.trim().length < 20)) {
+          textarea.value = draft.prompt;
+          if (draftStatus) draftStatus.textContent = "Восстановлен черновик из браузера.";
+        }
+      }
+    }
+  } catch (e) {}
+
+  function saveDraft() {
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({
+        title: titleEl?.value || "",
+        prompt: textarea?.value || "",
+        savedAt: Date.now(),
+      }));
+      if (draftStatus) draftStatus.textContent = "Черновик сохранён в браузере.";
+    } catch (e) {}
+  }
+
+  let draftTimer = null;
+  function scheduleDraft() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveDraft, 600);
+  }
+  titleEl?.addEventListener("input", scheduleDraft);
+  textarea?.addEventListener("input", scheduleDraft);
+
+  form?.addEventListener("submit", () => {
+    try { localStorage.removeItem(draftKey); } catch (e) {}
+  });
+
   if (!btn || !textarea) return;
 
   btn.addEventListener("click", async () => {
-    const title = document.getElementById("title")?.value?.trim() || "";
-    const code = document.getElementById("code")?.value?.trim() || "";
+    const title = titleEl?.value?.trim() || "";
+    const code = codeEl?.value?.trim() || "";
     if (title.length < 2 && code.length < 2) {
-      statusEl.textContent = "Сначала укажите название рубрики или код.";
+      statusEl.textContent = "Сначала укажите название рубрики.";
       statusEl.className = "small text-danger";
       return;
     }
@@ -77,6 +129,7 @@
         return;
       }
       textarea.value = data.text || "";
+      saveDraft();
       statusEl.textContent = data.improved
         ? "Готово — промпт улучшен. Не забудьте сохранить рубрику."
         : "Готово — промпт создан. Не забудьте сохранить рубрику.";

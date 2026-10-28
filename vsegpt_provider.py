@@ -50,7 +50,7 @@ def is_vsegpt_configured() -> bool:
 def get_vsegpt_text_model() -> str:
     return (
         os.environ.get("VSEGPT_TEXT_MODEL", "").strip()
-        or "anthropic/claude-sonnet-4-6"
+        or "anthropic/claude-sonnet-4.6"
     )
 
 

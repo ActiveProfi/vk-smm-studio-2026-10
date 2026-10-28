@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import run_agent as agent  # noqa: E402
 
 from webapp.services import relevance as relevance_svc
+from webapp.services import video_prompt_skill as video_skill
 from webapp.services import web_search as search_svc
 
 VISUAL_PROGRESS = "Идёт генерация визуала"
@@ -95,6 +96,8 @@ def run_pipeline(
     enable_relevance: bool = True,
     generate_image: bool = True,
     generate_video: bool = False,
+    video_provider: str = "kling",
+    video_brief: dict | None = None,
     force_continue_if_unsafe: bool = False,
     custom_prompt: str = "",
     rubric_title: str = "",
@@ -104,6 +107,7 @@ def run_pipeline(
     visual_style_prompt: str = "",
     reference_image_urls: list[str] | None = None,
     reference_image_names: list[str] | None = None,
+    reference_local_files: list[dict] | None = None,
     search_hint: str = "",
     marketer_text_guidance: str = "",
     on_progress=None,
@@ -223,6 +227,14 @@ def run_pipeline(
             "Все надписи в кадре — только кириллица (русский алфавит), чётко и без латиницы "
             "(кроме подписи внизу, если она явно задана во входных данных)."
         )
+        materials_list.append(
+            video_skill.llm_video_skill_instructions(video_brief=video_brief)
+        )
+        if video_skill.brief_has_content(video_brief):
+            materials_list.append(
+                "Итоговый video_prompt_text в ответе должен совпадать с брифом пользователя "
+                "по объекту/действию/месту; недостающие блоки допиши по формуле скилла."
+            )
 
     if generate_image or generate_video:
         materials_list.append(
@@ -293,9 +305,14 @@ def run_pipeline(
                 visual_data,
                 generate_image=generate_image,
                 generate_video=generate_video,
+                video_provider=video_provider,
+                video_brief=video_brief,
+                topic=topic,
                 brand_site=brand_site,
                 visual_style_prompt=visual_style_prompt,
                 reference_image_urls=reference_image_urls or [],
+                reference_image_names=reference_image_names or [],
+                reference_local_files=reference_local_files or [],
                 on_progress=on_progress,
             )
 
@@ -317,6 +334,7 @@ def _resolve_visual_data(
     visual_style_prompt: str = "",
     reference_image_urls: list[str] | None = None,
     reference_image_names: list[str] | None = None,
+    video_brief: dict | None = None,
     on_progress=None,
 ) -> tuple[dict | None, str]:
     answer = (agent_answer or "").strip()
@@ -357,6 +375,12 @@ def _resolve_visual_data(
         f"{style_line}"
         f"{ref_line}"
         f"Текст поста:\n{post_text}\n\n"
+    )
+    if generate_video:
+        user_message += video_skill.llm_video_skill_instructions(
+            video_brief=video_brief
+        ) + "\n"
+    user_message += (
         "Строгий формат ответа:\n"
         "## 3. Рекомендация по визуалу\n"
         "Формат: `image` (или `video` если нужен ролик).\n\n"
@@ -365,6 +389,12 @@ def _resolve_visual_data(
         "Надписи в кадре — только кириллица, каждую фразу в «ёлочках».\n"
         "Не пиши промпт на английском и не используй blockquote (>).\n"
     )
+    if generate_video:
+        user_message += (
+            "\nЕсли нужен ролик — отдельно дай ## 4b. Промпт для видео "
+            "по формуле 6 блоков (объект, действие, место, камера, свет, стиль), "
+            "тоже в тройных кавычках markdown.\n"
+        )
     provider, api_key_text = agent.resolve_text_provider("kie")
     payload = agent.build_claude_payload(user_message, rubric_lock="visual")
     response_data = agent.send_claude_request(payload, api_key_text, provider)
@@ -385,15 +415,22 @@ def _generate_visuals(
     *,
     generate_image: bool,
     generate_video: bool,
+    video_provider: str = "kling",
+    video_brief: dict | None = None,
+    topic: str = "",
     brand_site: str = "",
     visual_style_prompt: str = "",
     reference_image_urls: list[str] | None = None,
+    reference_image_names: list[str] | None = None,
+    reference_local_files: list[dict] | None = None,
     on_progress=None,
 ) -> None:
     kie_key = agent.get_api_key()
     _notify(on_progress, "visual_prepare", f"{VISUAL_PROGRESS}…")
-    # localhost-референсы снаружи не видны — сразу отфильтруем
-    ref_urls = agent.filter_public_reference_urls(reference_image_urls)
+    # Публичные URL (не localhost) + локальные файлы → generation refs в run_agent
+    ref_urls = list(reference_image_urls or [])
+    local_files = list(reference_local_files or [])
+    ref_names = list(reference_image_names or [])
     style_suffix = ""
     if (visual_style_prompt or "").strip():
         style_suffix = (
@@ -402,11 +439,24 @@ def _generate_visuals(
         )
 
     if not visual_data:
-        _append_error(
-            result,
-            "Визуал не создан: модель не вернула промпт для картинки или видео.",
-        )
-        return
+        # Если есть бриф пользователя — всё равно можно собрать видеопромпт без ответа LLM
+        if generate_video and video_skill.brief_has_content(video_brief):
+            visual_data = {}
+        else:
+            _append_error(
+                result,
+                "Визуал не создан: модель не вернула промпт для картинки или видео.",
+            )
+            return
+
+    # Скилл: пользовательский бриф перекрывает / дополняет video_prompt_text
+    if generate_video:
+        visual_data = video_skill.apply_video_brief_to_visual_data(
+            visual_data,
+            video_brief,
+            topic=topic,
+            channel_style=visual_style_prompt or "",
+        ) or visual_data
 
     need_still_image = generate_image or generate_video
     if need_still_image and visual_data:
@@ -421,8 +471,15 @@ def _generate_visuals(
             try:
                 result["steps"].append("image_gpt_image_2")
                 _notify(on_progress, "image_gpt_image_2", f"{VISUAL_PROGRESS}…")
+                has_any_ref = bool(local_files) or bool(
+                    agent.filter_public_reference_urls(ref_urls)
+                )
+                prompt_with_refs = agent.append_real_photo_reference_rule(
+                    image_prompt + style_suffix,
+                    has_references=has_any_ref,
+                )
                 image_vd = {
-                    "prompt_text": image_prompt + style_suffix,
+                    "prompt_text": prompt_with_refs,
                     "aspect_ratio": visual_data.get(
                         "image_prompt_aspect_ratio",
                         visual_data.get("aspect_ratio", "9:16" if generate_video else "4:5"),
@@ -441,18 +498,20 @@ def _generate_visuals(
                 )
                 agent.write_visual_validation_report(image_vd, vreport)
                 if vreport["is_safe"]:
-                    ref_public = agent.filter_public_reference_urls(ref_urls)
                     _notify(
                         on_progress,
                         "image_gpt_image_2",
-                        f"{VISUAL_PROGRESS}… VseGPT",
+                        f"{VISUAL_PROGRESS}… generation refs",
                     )
 
                     def _image_job() -> tuple[str, str]:
                         return agent.generate_image_url_with_fallback(
                             image_vd,
-                            reference_image_urls=ref_public,
+                            reference_image_urls=ref_urls,
+                            reference_local_files=local_files,
+                            reference_image_names=ref_names,
                             kie_key=kie_key,
+                            allow_no_person_fallback=True,
                         )
 
                     try:
@@ -462,16 +521,33 @@ def _generate_visuals(
                             VISUAL_PROGRESS,
                             _image_job,
                         )
+                    except agent.RealPersonReferenceUnavailableError as ref_fail:
+                        _append_error(result, str(ref_fail))
+                        image_url, provider_label = "", ""
                     except Exception as img_fail:  # noqa: BLE001
                         _append_error(result, str(img_fail))
                         image_url, provider_label = "", ""
 
                     if image_url:
                         result["image_url"] = image_url
+                        if agent.REAL_PERSON_REFERENCE_UNAVAILABLE in (
+                            image_vd.get("prompt_text") or ""
+                        ):
+                            result["warning"] = (
+                                (result.get("warning") or "")
+                                + " "
+                                + agent.REAL_PERSON_REFERENCE_UNAVAILABLE
+                                + ": сцена без конкретного человека (нет generation reference)."
+                            ).strip()
                         if "резерв" in (provider_label or "").lower():
                             result["warning"] = (
                                 (result.get("warning") or "")
                                 + f" Картинка создана через резерв {provider_label}."
+                            ).strip()
+                        elif "image-to-image" in (provider_label or "").lower():
+                            result["warning"] = (
+                                (result.get("warning") or "")
+                                + " Картинка с реальным фото-референсом (KIE image-to-image)."
                             ).strip()
                 else:
                     _append_error(
@@ -483,16 +559,29 @@ def _generate_visuals(
                 _append_error(result, f"Ошибка картинки: {img_exc}")
 
     if generate_video:
+        provider = agent.normalize_video_provider(video_provider, default="kling")
+        provider_label = agent.VIDEO_PROVIDER_LABELS.get(provider, provider)
+        step_name = f"video_{provider}"
         if not visual_data:
             _append_error(result, "Видео не создано: нет данных для видео.")
         else:
             try:
-                video_vd = _coerce_visual_for_kling(visual_data)
+                video_vd = _coerce_visual_for_video(visual_data, provider)
+                # Запреты из брифа — в конец промпта (безопасный путь для всех моделей)
+                neg = (video_vd.get("video_negative_prompt") or "").strip()
+                if not neg and video_brief:
+                    neg = video_skill.resolve_negative_prompt(video_brief)
+                if neg:
+                    video_vd["video_prompt_text"] = video_skill.attach_negative_to_prompt_if_needed(
+                        video_vd.get("video_prompt_text") or "",
+                        neg,
+                        provider=provider,
+                    )
                 if not (video_vd.get("video_prompt_text") or "").strip():
                     _append_error(result, "Видео не создано: нет промпта для видео.")
                 else:
-                    result["steps"].append("video_kling")
-                    _notify(on_progress, "video_kling", f"{VISUAL_PROGRESS}…")
+                    result["steps"].append(step_name)
+                    _notify(on_progress, step_name, f"{VISUAL_PROGRESS}… {provider_label}")
                     base_image_url = result.get("image_url") or None
                     video_route = video_vd.get("video_route", "text_to_video")
                     if video_vd.get("video_has_text_overlay"):
@@ -506,24 +595,34 @@ def _generate_visuals(
                             "Кадр для видео не готов, пробуем другой режим.",
                         )
 
-                    video_payload = agent.build_video_payload(
-                        video_vd,
-                        "kling",
-                        base_image_url=base_image_url if video_route == "image_to_video" else None,
-                        kling_mode="pro",
-                    )
+                    use_image = base_image_url if video_route == "image_to_video" else None
+
+                    def _make_payload(kling_mode: str = "pro") -> dict:
+                        return agent.build_video_payload(
+                            video_vd,
+                            provider,
+                            base_image_url=use_image,
+                            kling_mode=kling_mode,
+                        )
+
+                    video_payload = _make_payload("pro" if provider == "kling" else "pro")
                     try:
                         video_create = agent.create_video_task(video_payload, kie_key)
                     except Exception as create_exc:  # noqa: BLE001
-                        _notify(on_progress, "video_kling", f"{VISUAL_PROGRESS}… повтор")
-                        video_payload = agent.build_video_payload(
-                            video_vd,
-                            "kling",
-                            base_image_url=base_image_url if video_route == "image_to_video" else None,
-                            kling_mode="std",
-                        )
-                        video_create = agent.create_video_task(video_payload, kie_key)
-                        _append_error(result, f"Первый запрос видео не прошёл ({create_exc}); повтор.")
+                        if provider == "kling":
+                            _notify(
+                                on_progress,
+                                step_name,
+                                f"{VISUAL_PROGRESS}… {provider_label} повтор",
+                            )
+                            video_payload = _make_payload("std")
+                            video_create = agent.create_video_task(video_payload, kie_key)
+                            _append_error(
+                                result,
+                                f"Первый запрос видео не прошёл ({create_exc}); повтор.",
+                            )
+                        else:
+                            raise
 
                     video_task_id = video_create.get("data", {}).get("taskId", "")
                     if not video_task_id:
@@ -532,30 +631,31 @@ def _generate_visuals(
                         try:
                             video_result = _run_with_progress_pulse(
                                 on_progress,
-                                "video_kling",
-                                VISUAL_PROGRESS,
+                                step_name,
+                                f"{VISUAL_PROGRESS} ({provider_label})",
                                 lambda: agent.wait_for_any_video_result(
-                                    video_task_id, kie_key, "kling", timeout_sec=900
+                                    video_task_id, kie_key, provider, timeout_sec=900
                                 ),
                             )
                         except Exception as wait_exc:  # noqa: BLE001
-                            _notify(on_progress, "video_kling", f"{VISUAL_PROGRESS}… повтор")
-                            video_payload = agent.build_video_payload(
-                                video_vd,
-                                "kling",
-                                base_image_url=base_image_url if video_route == "image_to_video" else None,
-                                kling_mode="std",
+                            if provider != "kling":
+                                raise
+                            _notify(
+                                on_progress,
+                                step_name,
+                                f"{VISUAL_PROGRESS}… {provider_label} повтор",
                             )
+                            video_payload = _make_payload("std")
                             video_create = agent.create_video_task(video_payload, kie_key)
                             video_task_id = video_create.get("data", {}).get("taskId", "")
                             if not video_task_id:
                                 raise wait_exc
                             video_result = _run_with_progress_pulse(
                                 on_progress,
-                                "video_kling",
-                                VISUAL_PROGRESS,
+                                step_name,
+                                f"{VISUAL_PROGRESS} ({provider_label})",
                                 lambda: agent.wait_for_any_video_result(
-                                    video_task_id, kie_key, "kling", timeout_sec=900
+                                    video_task_id, kie_key, provider, timeout_sec=900
                                 ),
                             )
                             _append_error(result, f"Повтор после: {wait_exc}")
@@ -566,6 +666,7 @@ def _generate_visuals(
                         video_urls = agent.extract_result_urls(video_result)
                         if video_urls:
                             result["video_url"] = video_urls[0]
+                            result["video_provider"] = provider
                             soft = (result.get("error") or "").strip()
                             if soft and "не создано" not in soft.lower():
                                 result["warning"] = soft
@@ -573,7 +674,7 @@ def _generate_visuals(
                         else:
                             _append_error(result, "Видео готово, но ссылка не получена.")
             except Exception as vid_exc:  # noqa: BLE001
-                _append_error(result, f"Ошибка видео: {vid_exc}")
+                _append_error(result, f"Ошибка видео ({provider_label}): {vid_exc}")
 
     if generate_video and not result.get("video_url"):
         if not (result.get("error") or "").strip():
@@ -596,10 +697,13 @@ def run_visual_for_draft(
     agent_answer: str = "",
     generate_image: bool = True,
     generate_video: bool = False,
+    video_provider: str = "kling",
+    video_brief: dict | None = None,
     brand_site: str = "",
     visual_style_prompt: str = "",
     reference_image_urls: list[str] | None = None,
     reference_image_names: list[str] | None = None,
+    reference_local_files: list[dict] | None = None,
     on_progress=None,
 ) -> dict:
     """Догенерация визуала для готового черновика — текст не трогаем."""
@@ -629,6 +733,7 @@ def run_visual_for_draft(
         visual_style_prompt=visual_style_prompt,
         reference_image_urls=reference_image_urls,
         reference_image_names=reference_image_names,
+        video_brief=video_brief,
         on_progress=on_progress,
     )
     if new_answer:
@@ -639,20 +744,26 @@ def run_visual_for_draft(
         visual_data,
         generate_image=generate_image,
         generate_video=generate_video,
+        video_provider=video_provider,
+        video_brief=video_brief,
+        topic=topic or "",
         brand_site=brand_site,
         visual_style_prompt=visual_style_prompt,
         reference_image_urls=reference_image_urls or [],
+        reference_image_names=reference_image_names or [],
+        reference_local_files=reference_local_files or [],
         on_progress=on_progress,
     )
     result["ok"] = bool(result.get("image_url") or result.get("video_url"))
     return result
 
 
-def _coerce_visual_for_kling(visual_data: dict) -> dict:
-    """Если модель вернула image вместо video — всё равно готовим данные для Kling."""
+def _coerce_visual_for_video(visual_data: dict, video_provider: str = "kling") -> dict:
+    """Если модель вернула image вместо video — готовим данные под выбранный провайдер."""
+    provider = agent.normalize_video_provider(video_provider, default="kling")
     vd = dict(visual_data)
     vd["visual_type"] = "video"
-    vd["video_model"] = "kling"
+    vd["video_model"] = provider
 
     image_prompt = (
         (vd.get("image_prompt_text") or "").strip()
@@ -677,13 +788,21 @@ def _coerce_visual_for_kling(visual_data: dict) -> dict:
         or '"' in image_prompt
         or "заголовок" in image_prompt.lower()
         or "текст" in image_prompt.lower()
-        or vd.get("video_has_text_overlay")
+        or "кириллиц" in image_prompt.lower()
     )
-    vd["video_has_text_overlay"] = bool(has_text or image_prompt)
-    vd["video_route"] = "image_to_video" if vd["video_has_text_overlay"] else "text_to_video"
+    vd["video_has_text_overlay"] = bool(vd.get("video_has_text_overlay")) or has_text
+    if has_text:
+        vd["video_route"] = "image_to_video"
+    elif not vd.get("video_route"):
+        vd["video_route"] = "text_to_video"
     vd.setdefault("image_prompt_aspect_ratio", "9:16")
     vd.setdefault("image_prompt_resolution", "1K")
     vd.setdefault("image_prompt_output_format", "png")
     vd.setdefault("aspect_ratio", "9:16")
     vd.setdefault("resolution", "1K")
     return vd
+
+
+# Совместимость со старым именем
+def _coerce_visual_for_kling(visual_data: dict) -> dict:
+    return _coerce_visual_for_video(visual_data, "kling")

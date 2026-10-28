@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Отчёт ВК Реклама · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">ВК Реклама</p>
+    <h1 class="h4 mb-1">Отчёт по кабинетам</h1>
+    <p class="text-muted small mb-0">Выберите период и каналы (можно 3 из 15) — сводка и выгрузка Excel.</p>
+  </div>
+  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.ads_cabinets') }}">К кабинетам</a>
+</div>
+
+<form method="post" class="panel mb-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+      <label class="form-label small mb-0" for="date_from">С</label>
+      <input class="form-control form-control-sm" type="date" name="date_from" id="date_from" value="{{ date_from }}" required>
+    </div>
+    <div class="col-auto">
+      <label class="form-label small mb-0" for="date_to">По</label>
+      <input class="form-control form-control-sm" type="date" name="date_to" id="date_to" value="{{ date_to }}" required>
+    </div>
+  </div>
+
+  <p class="small text-muted mb-2">Каналы для отчёта:</p>
+  <div class="row g-2 mb-3">
+    {% for c in cabinets %}
+    <div class="col-md-4 col-lg-3">
+      <label class="border rounded px-2 py-2 d-flex gap-2 align-items-start mb-0 w-100"
+             style="cursor:pointer;background:{% if c.workspace_id in selected_ids %}#fff8e6{% else %}#fff{% endif %}">
+        <input type="checkbox" name="workspace_ids" value="{{ c.workspace_id }}"
+               {% if c.workspace_id in selected_ids %}checked{% endif %}
+               {% if c.status != 'connected' %}title="Кабинет не подключён — в отчёте будет ошибка"{% endif %}>
+        <span>
+          <strong class="d-block">{{ c.channel_name }}</strong>
+          <span class="small text-muted">{{ c.status_label }}</span>
+        </span>
+      </label>
+    </div>
+    {% else %}
+    <p class="small text-muted">Нет каналов. Добавьте каналы и подключите Ads.</p>
+    {% endfor %}
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    <button type="submit" class="btn btn-accent" name="export" value="">Показать отчёт</button>
+    <button type="submit" class="btn btn-outline-dark" name="export" value="xlsx">Скачать Excel</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-all">Выбрать все</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-none">Снять все</button>
+  </div>
+</form>
+
+{% if report %}
+{% if report.warnings %}
+<div class="alert alert-warning small">
+  {% for w in report.warnings %}<div>{{ w }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Каналов в отчёте</div>
+      <div class="stat-value">{{ report.selected_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Расход</div>
+      <div class="stat-value">{{ '%.0f'|format(report.totals.spent) }} ₽</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Показы</div>
+      <div class="stat-value">{{ report.totals.shows }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Клики / CTR</div>
+      <div class="stat-value">{{ report.totals.clicks }}</div>
+      <div class="text-muted small">{% if report.totals.ctr is not none %}CTR {{ report.totals.ctr }}%{% else %}—{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 class="h6 mb-2">По каналам · {{ report.date_from }} — {{ report.date_to }}</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Канал</th>
+          <th>Расход</th>
+          <th>Показы</th>
+          <th>Клики</th>
+          <th>CTR</th>
+          <th>Кампаний</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ch in report.channels %}
+        <tr>
+          <td>
+            <strong>{{ ch.channel_name }}</strong>
+            {% if ch.error %}<div class="text-danger small">{{ ch.error }}</div>{% endif %}
+          </td>
+          <td>{% if ch.spent is not none %}{{ '%.0f'|format(ch.spent) }} ₽{% else %}—{% endif %}</td>
+          <td>{{ ch.shows if ch.shows is not none else '—' }}</td>
+          <td>{{ ch.clicks if ch.clicks is not none else '—' }}</td>
+          <td>{% if ch.ctr is not none %}{{ ch.ctr }}%{% else %}—{% endif %}</td>
+          <td>{{ ch.campaigns }}</td>
+          <td class="text-end">
+            <a class="small" href="{{ url_for('smm.ads_channel', workspace_id=ch.workspace_id) }}">кампании</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  const boxes = () => [...document.querySelectorAll('input[name="workspace_ids"]')];
+  document.getElementById("btn-all")?.addEventListener("click", () => boxes().forEach(b => b.checked = true));
+  document.getElementById("btn-none")?.addEventListener("click", () => boxes().forEach(b => b.checked = false));
+})();
+</script>
+{% endblock %}

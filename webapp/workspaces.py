@@ -11,6 +11,9 @@ from flask_login import current_user, login_required
 from webapp.forms import RubricForm, SwitchWorkspaceForm, WorkspaceForm
 from webapp.models import Draft, Rubric, Workspace, db
 from webapp.services import vk_client
+from webapp.services import vk_ads_client
+from webapp.services import access as acc
+from webapp.services.secrets_box import reveal, seal
 from webapp.services import materials_bag
 from webapp.services import workspace_visual as ws_visual
 from webapp.services import workspace_ai as ws_ai
@@ -27,7 +30,7 @@ workspaces_bp = Blueprint("workspaces", __name__, url_prefix="/workspaces")
 
 
 def _user_workspace(workspace_id: int) -> Workspace:
-    return Workspace.query.filter_by(id=workspace_id, user_id=current_user.id).first_or_404()
+    return acc.get_workspace_or_404(current_user, workspace_id)
 
 
 def _visual_refs_for_template(ws: Workspace | None) -> list[dict]:
@@ -56,6 +59,8 @@ def _run_style_preview_job(app, job_id: str, payload: dict) -> None:
                 visual_style_prompt=payload.get("visual_style_prompt") or "",
                 brand_site=payload.get("brand_site") or "",
                 reference_image_urls=payload.get("reference_image_urls") or [],
+                reference_local_files=payload.get("reference_local_files") or [],
+                reference_image_names=payload.get("reference_image_names") or [],
                 on_progress=progress,
             )
             ws = db.session.get(Workspace, ws_id)
@@ -115,11 +120,7 @@ def _vk_status_for_workspace(ws: Workspace | None) -> dict:
 @login_required
 def list_workspaces():
     ensure_default_workspace_for_user(current_user)
-    items = (
-        Workspace.query.filter_by(user_id=current_user.id)
-        .order_by(Workspace.id.asc())
-        .all()
-    )
+    items = list(acc.list_workspaces(current_user, active_only=False))
     switch_form = SwitchWorkspaceForm()
     active_ws = next((w for w in items if w.id == current_user.active_workspace_id), None)
     return render_template(
@@ -128,6 +129,8 @@ def list_workspaces():
         active_id=current_user.active_workspace_id,
         active_ws=active_ws,
         switch_form=switch_form,
+        user_role=acc.ROLE_LABELS.get(acc.role_for_user(current_user), ""),
+        can_create=acc.can(current_user, "workspace_create"),
     )
 
 
@@ -186,12 +189,16 @@ def switch_workspace():
 @workspaces_bp.route("/new", methods=["GET", "POST"])
 @login_required
 def create_workspace():
+    if not acc.can(current_user, "workspace_create"):
+        flash("Создавать каналы может только владелец кабинета.", "warning")
+        return redirect(url_for("workspaces.list_workspaces"))
     form = WorkspaceForm()
     if form.validate_on_submit():
         from webapp.services import business as biz
 
+        owner_id = acc.agency_owner_id(current_user)
         ws = Workspace(
-            user_id=current_user.id,
+            user_id=owner_id,
             name=form.name.data.strip(),
             theme=(form.theme.data or "").strip(),
             description=(form.description.data or "").strip(),
@@ -199,8 +206,10 @@ def create_workspace():
             search_hint=(form.search_hint.data or "").strip(),
             knowledge_text=(form.knowledge_text.data or "").strip(),
             visual_style_prompt=(form.visual_style_prompt.data or "").strip(),
-            vk_token=(form.vk_token.data or "").strip(),
+            vk_token=seal((form.vk_token.data or "").strip()),
             vk_group_id=(form.vk_group_id.data or "").strip(),
+            vk_ads_token=seal((form.vk_ads_token.data or "").strip()),
+            vk_ads_account_id=(form.vk_ads_account_id.data or "").strip(),
             is_active=True,
         )
         db.session.add(ws)
@@ -238,12 +247,16 @@ def create_workspace():
 @login_required
 def edit_workspace(workspace_id: int):
     ws = _user_workspace(workspace_id)
+    if not acc.can(current_user, "workspace_settings", ws):
+        flash("Недостаточно прав для настройки канала.", "warning")
+        return redirect(url_for("workspaces.list_workspaces"))
     from webapp.services import business as biz
 
     form = WorkspaceForm(obj=ws)
     if request.method == "GET":
         # Не показываем токен в password-поле при открытии формы
         form.vk_token.data = ""
+        form.vk_ads_token.data = ""
         if hasattr(form, "seed_mode"):
             form.seed_mode.data = "empty"
 
@@ -257,8 +270,12 @@ def edit_workspace(workspace_id: int):
         ws.visual_style_prompt = (form.visual_style_prompt.data or "").strip()
         new_token = (form.vk_token.data or "").strip()
         if new_token:
-            ws.vk_token = new_token
+            ws.vk_token = seal(new_token)
         ws.vk_group_id = (form.vk_group_id.data or "").strip()
+        new_ads_token = (form.vk_ads_token.data or "").strip()
+        if new_ads_token:
+            ws.vk_ads_token = seal(new_ads_token)
+        ws.vk_ads_account_id = (form.vk_ads_account_id.data or "").strip()
         old_code = (ws.package_code or "").strip()
         biz.apply_package_fields(
             ws,
@@ -329,7 +346,11 @@ def upload_visual_ref(workspace_id: int):
         stamp = int(datetime.utcnow().timestamp() * 1000)
         safe_name = safe_storage_name(display_name)
         path = upload_dir / f"{stamp}_{safe_name}"
-        f.save(path)
+        try:
+            path = ws_visual.save_uploaded_reference(f, path)
+        except ValueError as exc:
+            skipped.append(f"{display_name}: {exc}")
+            continue
         relative = f"workspace/{ws.id}/refs/{path.name}"
         item = ws_visual.add_reference_image(ws, name=display_name, relative_path=relative)
         item["url"] = url_for("smm.media_file", user_id=current_user.id, filename=relative)
@@ -375,12 +396,22 @@ def start_style_preview(workspace_id: int):
     """Генерация примера картинки для утверждения стиля канала."""
     ws = _user_workspace(workspace_id)
     data = request.get_json(silent=True) or {}
-    visual_style_prompt = (
-        (data.get("visual_style_prompt") or "").strip()
-        or (ws.visual_style_prompt or "").strip()
-    )
+    form_style = (data.get("visual_style_prompt") or "").strip()
+    db_style = (ws.visual_style_prompt or "").strip()
+    # Пустое/короткое поле на странице → берём сохранённый стиль канала
+    if len(form_style) < 10:
+        visual_style_prompt = db_style
+    else:
+        visual_style_prompt = form_style
     name = (data.get("name") or ws.name or "").strip()
     refs = ws_visual.load_reference_images(ws)
+    upload_root = Path(current_app.config["UPLOAD_FOLDER"])
+    local_files = ws_visual.resolve_reference_local_files(
+        upload_root, current_user.id, refs
+    )
+    ref_names = [
+        (r.get("name") or "").strip() for r in refs if (r.get("name") or "").strip()
+    ]
     payload = {
         "kind": "style_preview",
         "workspace_id": ws.id,
@@ -390,12 +421,17 @@ def start_style_preview(workspace_id: int):
         "visual_style_prompt": visual_style_prompt,
         "brand_site": (data.get("brand_site") or ws.brand_site or "").strip(),
         "reference_image_urls": ws_visual.build_media_urls(current_user.id, refs),
+        "reference_local_files": local_files,
+        "reference_image_names": ref_names,
     }
     if len(visual_style_prompt) < 10:
         return jsonify(
             {
                 "ok": False,
-                "error": "Сначала заполните промпт визуального стиля (или сгенерируйте его кнопкой «ИИ генерация»).",
+                "error": (
+                    "Промпт визуального стиля пустой. Заполните поле выше, "
+                    "нажмите «Сохранить канал», затем снова «Сгенерировать пример»."
+                ),
             }
         ), 400
 
@@ -514,7 +550,7 @@ def test_vk(workspace_id: int):
     ws = _user_workspace(workspace_id)
     data = request.get_json(silent=True) or {}
     # Можно передать черновик из полей формы до сохранения
-    token = (data.get("vk_token") or "").strip() or (ws.vk_token or "")
+    token = (data.get("vk_token") or "").strip() or reveal(ws.vk_token)
     group_id = (data.get("vk_group_id") or "").strip() or (ws.vk_group_id or "")
     try:
         result = vk_client.test_connection(user_token=token, user_group_id=group_id)
@@ -537,6 +573,42 @@ def test_vk_new():
         return jsonify({"ok": False, "error": str(exc)}), 400
 
 
+@workspaces_bp.route("/<int:workspace_id>/test-ads", methods=["POST"])
+@login_required
+def test_ads(workspace_id: int):
+    """Проверка токена VK Реклама для канала."""
+    ws = _user_workspace(workspace_id)
+    data = request.get_json(silent=True) or {}
+    token = (data.get("vk_ads_token") or "").strip() or reveal(ws.vk_ads_token)
+    try:
+        result = vk_ads_client.test_connection(token=token)
+        fresh = (result.get("access_token") or "").strip()
+        if fresh and (
+            (ws.vk_ads_token or "").strip()
+            or not (data.get("vk_ads_token") or "").strip()
+        ):
+            # Обновлённый токен из .env/refresh — сохраним в канал, если канал уже был привязан
+            if (ws.vk_ads_token or "").strip() and fresh != reveal(ws.vk_ads_token):
+                ws.vk_ads_token = seal(fresh)
+                db.session.commit()
+        return jsonify({"ok": True, **{k: v for k, v in result.items() if k != "access_token"}})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@workspaces_bp.route("/test-ads-new", methods=["POST"])
+@login_required
+def test_ads_new():
+    """Проверка токена VK Реклама при создании канала."""
+    data = request.get_json(silent=True) or {}
+    token = (data.get("vk_ads_token") or "").strip()
+    try:
+        result = vk_ads_client.test_connection(token=token)
+        public = {k: v for k, v in result.items() if k != "access_token"}
+        return jsonify({"ok": True, **public})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
 
 @workspaces_bp.route("/<int:workspace_id>/rubrics")
 @login_required
@@ -556,24 +628,32 @@ def create_rubric(workspace_id: int):
     ws = _user_workspace(workspace_id)
     form = RubricForm()
     if form.validate_on_submit():
-        code = form.code.data.strip().lower()
-        exists = Rubric.query.filter_by(workspace_id=ws.id, code=code).first()
-        if exists:
-            flash("Рубрика с таким кодом уже есть в этом канале.", "danger")
-        else:
-            db.session.add(
-                Rubric(
-                    workspace_id=ws.id,
-                    code=code,
-                    title=form.title.data.strip(),
-                    prompt_text=form.prompt_text.data.strip(),
-                    sort_order=form.sort_order.data or 0,
-                    is_active=bool(form.is_active.data),
-                )
+        from webapp.services.slugify import unique_rubric_code
+
+        title = form.title.data.strip()
+        existing = {
+            r.code
+            for r in Rubric.query.filter_by(workspace_id=ws.id).all()
+            if r.code
+        }
+        code = unique_rubric_code(
+            title,
+            existing_codes=existing,
+            preferred=(form.code.data or "").strip().lower() or None,
+        )
+        db.session.add(
+            Rubric(
+                workspace_id=ws.id,
+                code=code,
+                title=title,
+                prompt_text=form.prompt_text.data.strip(),
+                sort_order=form.sort_order.data or 0,
+                is_active=bool(form.is_active.data),
             )
-            db.session.commit()
-            flash("Рубрика добавлена.", "success")
-            return redirect(url_for("workspaces.rubrics", workspace_id=ws.id))
+        )
+        db.session.commit()
+        flash(f"Рубрика добавлена (код: {code}).", "success")
+        return redirect(url_for("workspaces.rubrics", workspace_id=ws.id))
     return render_template("workspaces/rubric_edit.html", form=form, workspace=ws, rubric=None)
 
 
@@ -584,23 +664,26 @@ def edit_rubric(workspace_id: int, rubric_id: int):
     rubric = Rubric.query.filter_by(id=rubric_id, workspace_id=ws.id).first_or_404()
     form = RubricForm(obj=rubric)
     if form.validate_on_submit():
-        new_code = form.code.data.strip().lower()
-        clash = (
-            Rubric.query.filter_by(workspace_id=ws.id, code=new_code)
-            .filter(Rubric.id != rubric.id)
-            .first()
-        )
-        if clash:
-            flash("Другая рубрика уже использует этот код.", "danger")
-        else:
-            rubric.code = new_code
-            rubric.title = form.title.data.strip()
-            rubric.prompt_text = form.prompt_text.data.strip()
-            rubric.sort_order = form.sort_order.data or 0
-            rubric.is_active = bool(form.is_active.data)
-            db.session.commit()
-            flash("Рубрика сохранена.", "success")
-            return redirect(url_for("workspaces.rubrics", workspace_id=ws.id))
+        from webapp.services.slugify import unique_rubric_code
+
+        title = form.title.data.strip()
+        existing = {
+            r.code
+            for r in Rubric.query.filter_by(workspace_id=ws.id).all()
+            if r.code
+        }
+        # Код при правке не меняем без нужды — стабильные ссылки в планах
+        new_code = (rubric.code or "").strip().lower()
+        if not new_code:
+            new_code = unique_rubric_code(title, existing_codes=existing)
+        rubric.code = new_code
+        rubric.title = title
+        rubric.prompt_text = form.prompt_text.data.strip()
+        rubric.sort_order = form.sort_order.data or 0
+        rubric.is_active = bool(form.is_active.data)
+        db.session.commit()
+        flash("Рубрика сохранена.", "success")
+        return redirect(url_for("workspaces.rubrics", workspace_id=ws.id))
     return render_template(
         "workspaces/rubric_edit.html", form=form, workspace=ws, rubric=rubric
     )

@@ -44,7 +44,7 @@
     {% if workspace %}
     <div class="mb-3">
       <label class="form-label">Референсы (картинки-примеры стиля)</label>
-      <div class="form-text mb-2">Сначала загрузите до 8 изображений (png, jpg, webp, gif). ИИ учтёт их при генерации промпта стиля и при создании визуалов.</div>
+      <div class="form-text mb-2">Сначала загрузите до 8 изображений (png, jpg, webp, gif). Крупные фото с телефона система сожмёт сама. Если пишет ошибку размера — грузите по 1–2 файла за раз. ИИ учтёт их при генерации промпта стиля и при создании визуалов.</div>
       <div class="d-flex flex-wrap gap-2 mb-2" id="visual-refs-list">
         {% for ref in visual_refs %}
         <div class="visual-ref-card border rounded p-1 position-relative" data-ref-id="{{ ref.id }}">
@@ -238,10 +238,20 @@
       {% else %}
       <div class="small text-muted mb-2">Фоновая проверка ещё не успела отработать — подождите около минуты после включения.</div>
       {% endif %}
-      <form method="post" action="{{ url_for('smm.auto_publish_now', workspace_id=workspace.id) }}" class="d-inline">
+      <form method="post" action="{{ url_for('smm.auto_publish_now', workspace_id=workspace.id) }}" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ url_for('workspaces.edit_workspace', workspace_id=workspace.id) }}">
-        <button type="submit" class="btn btn-outline-dark btn-sm">Проверить и опубликовать сейчас</button>
+        <input type="hidden" name="enable_auto" value="1">
+        <div>
+          <label class="form-label small mb-1" for="ap-period">Период</label>
+          <select class="form-select form-select-sm" name="period" id="ap-period" style="min-width:10rem">
+            <option value="today" selected>Сегодня</option>
+            <option value="week">Эта неделя</option>
+            <option value="month">Этот месяц</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-outline-dark btn-sm">Проверить и опубликовать</button>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">Согласование и свой период</a>
       </form>
     </div>
     {% endif %}
@@ -325,26 +335,49 @@
     <div id="vk-test-result" class="mb-3" style="display:none"></div>
 
     <hr class="my-4">
-    <div class="border rounded p-3 mb-3 vk-ads-stub" style="background:#f7f5f0;border-color:var(--line)!important;opacity:0.95">
+    <div class="border rounded p-3 mb-3" style="background:#f7f5f0;border-color:var(--line)!important">
       <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
         <h2 class="h5 mb-0">Подключение ВК Реклама</h2>
-        <span class="badge text-bg-warning">Скоро</span>
+        {% if workspace and workspace.vk_ads_token %}
+        <span class="badge text-bg-success">Подключено</span>
+        {% else %}
+        <span class="badge text-bg-secondary">Не подключено</span>
+        {% endif %}
       </div>
       <p class="small text-muted mb-3">
-        Здесь появится связка рекламного кабинета ВКонтакте с этим каналом:
-        кампании, расходы и статусы объявлений — рядом с контентом клиента.
-        Доступно с тарифа <strong>Pro</strong>.
+        Привяжите рекламный кабинет <a href="https://ads.vk.com/" target="_blank" rel="noopener">ads.vk.com</a>
+        к этому каналу через мастер:
+        <a href="{{ url_for('smm.ads_connect', workspace_id=workspace.id) if workspace else url_for('smm.ads_connect') }}">Подключить ВК Ads</a>.
+        Список всех кабинетов — в меню <strong>Реклама</strong>. Рекомендуется тариф <strong>Pro</strong>.
       </p>
       <div class="mb-3">
-        <label class="form-label">ID кабинета ВК Реклама</label>
-        <input type="text" class="form-control" placeholder="Например, 12345678" disabled>
+        {{ form.vk_ads_account_id.label(class="form-label") }}
+        {{ form.vk_ads_account_id(class="form-control") }}
+        <div class="form-text">Необязательно: номер кабинета для вашей заметки (в новом API токен уже привязан к кабинету).</div>
       </div>
       <div class="mb-3">
-        <label class="form-label">Токен рекламного API</label>
-        <input type="password" class="form-control" placeholder="Будет доступно после запуска модуля" disabled>
+        {{ form.vk_ads_token.label(class="form-label") }}
+        {{ form.vk_ads_token(class="form-control") }}
+        <div class="form-text">
+          {% if workspace and workspace.vk_ads_token %}
+            Токен уже сохранён. Введите новый, только если хотите заменить.
+          {% else %}
+            Access token из ads.vk.com → Настройки → Доступ к API.
+            Можно временно положить в <code>.env</code> как <code>VK_ADS_TOKEN</code>.
+          {% endif %}
+        </div>
       </div>
-      <button type="button" class="btn btn-outline-dark" disabled>Подключить кабинет</button>
-      <p class="small text-muted mb-0 mt-2">Модуль в разработке. Поля пока недоступны — это заглушка.</p>
+      <div class="mb-2 d-flex flex-wrap gap-2 align-items-center">
+        <button type="button" class="btn btn-outline-dark" id="btn-test-ads">Проверить кабинет рекламы</button>
+        <span id="ads-test-status" class="small"></span>
+      </div>
+      <div id="ads-test-result" class="mb-2" style="display:none"></div>
+      <p class="small text-muted mb-0">
+        После заполнения нажмите «Сохранить канал» внизу страницы.
+        {% if workspace %}
+        Затем откройте <a href="{{ url_for('smm.ads') }}">Реклама</a>.
+        {% endif %}
+      </p>
     </div>
 
     {% if workspace %}
@@ -446,6 +479,52 @@
     } catch (e) {
       statusEl.textContent = "Ошибка сети";
       statusEl.className = "small text-danger";
+    }
+  });
+
+  const adsBtn = document.getElementById("btn-test-ads");
+  const adsStatus = document.getElementById("ads-test-status");
+  const adsResult = document.getElementById("ads-test-result");
+  {% if workspace %}
+  const adsTestUrl = "{{ url_for('workspaces.test_ads', workspace_id=workspace.id) }}";
+  {% else %}
+  const adsTestUrl = "{{ url_for('workspaces.test_ads_new') }}";
+  {% endif %}
+  adsBtn?.addEventListener("click", async () => {
+    adsStatus.textContent = "Проверяем…";
+    adsStatus.className = "small text-muted";
+    adsResult.style.display = "none";
+    try {
+      const res = await fetch(adsTestUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+        },
+        body: JSON.stringify({
+          vk_ads_token: document.getElementById("vk_ads_token")?.value || "",
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        adsStatus.textContent = "Ошибка";
+        adsStatus.className = "small text-danger";
+        adsResult.style.display = "block";
+        adsResult.className = "alert alert-danger py-2 small mb-2";
+        adsResult.textContent = data.error || "Не удалось подключиться к VK Реклама";
+        return;
+      }
+      adsStatus.textContent = "Успех";
+      adsStatus.className = "small text-success";
+      adsResult.style.display = "block";
+      adsResult.className = "alert alert-success py-2 small mb-2";
+      adsResult.textContent = data.message || "Кабинет отвечает.";
+    } catch (e) {
+      adsStatus.textContent = "Ошибка сети";
+      adsStatus.className = "small text-danger";
+      adsResult.style.display = "block";
+      adsResult.className = "alert alert-danger py-2 small mb-2";
+      adsResult.textContent = String(e);
     }
   });
 })();
@@ -597,7 +676,7 @@
         progressEl.style.display = "none";
         btnGen.disabled = false;
         errorEl.style.display = "block";
-        errorEl.textContent = "Ошибка сети";
+        errorEl.textContent = "Не удалось получить статус. Обновите страницу (F5) и попробуйте снова.";
       }
     }, 2500);
   }
@@ -624,7 +703,18 @@
         },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        progressEl.style.display = "none";
+        btnGen.disabled = false;
+        errorEl.style.display = "block";
+        errorEl.textContent = res.status === 400
+          ? "Сессия устарела. Обновите страницу (F5) и нажмите снова."
+          : ("Ошибка сервера (" + res.status + "). Обновите страницу и попробуйте снова.");
+        return;
+      }
       if (!data.ok || !data.job_id) {
         progressEl.style.display = "none";
         btnGen.disabled = false;
@@ -637,7 +727,7 @@
       progressEl.style.display = "none";
       btnGen.disabled = false;
       errorEl.style.display = "block";
-      errorEl.textContent = "Ошибка сети";
+      errorEl.textContent = "Нет связи с сервером. Проверьте, что сайт открыт на http://127.0.0.1:5050 и обновите страницу.";
     }
   });
 })();
@@ -703,7 +793,17 @@
       return;
     }
     const fd = new FormData();
-    for (const f of files) fd.append("reference_uploads", f);
+    let totalBytes = 0;
+    for (const f of files) {
+      totalBytes += f.size || 0;
+      fd.append("reference_uploads", f);
+    }
+    // Предупреждение до отправки, если суммарно больше ~60 МБ
+    if (totalBytes > 60 * 1024 * 1024) {
+      statusEl.textContent = "Слишком много за раз. Выберите 1–2 фото и загрузите снова.";
+      statusEl.className = "small text-danger";
+      return;
+    }
     statusEl.textContent = "Загружаем…";
     statusEl.className = "small text-muted";
     try {
@@ -712,7 +812,20 @@
         headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
         body: fd,
       });
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        statusEl.className = "small text-danger";
+        if (res.status === 413) {
+          statusEl.textContent = "Файлы слишком большие. Загрузите по 1–2 фото за раз.";
+        } else if (res.status === 400) {
+          statusEl.textContent = "Сессия устарела. Обновите страницу (F5) и попробуйте снова.";
+        } else {
+          statusEl.textContent = "Ошибка сервера (" + res.status + "). Обновите страницу и повторите.";
+        }
+        return;
+      }
       if (!data.ok) {
         statusEl.textContent = data.error || "Не удалось загрузить";
         statusEl.className = "small text-danger";
@@ -723,7 +836,7 @@
       statusEl.textContent = "Загружено: " + (data.added || []).length;
       statusEl.className = "small text-success";
     } catch (e) {
-      statusEl.textContent = "Ошибка сети";
+      statusEl.textContent = "Нет связи с сервером. Обновите страницу (F5) и попробуйте снова.";
       statusEl.className = "small text-danger";
     }
   });
@@ -916,4 +1029,45 @@
 })();
 </script>
 {% endif %}
+<script>
+(function () {
+  // Черновик настроек нового канала — чтобы не потерять промпты до нажатия «Сохранить»
+  const isNew = {{ 'true' if not workspace else 'false' }};
+  if (!isNew) return;
+  const form = document.getElementById("workspace-form");
+  if (!form) return;
+  const key = "workspace_new_draft_v1";
+  const fields = ["name", "theme", "description", "brand_site", "knowledge_text", "visual_style_prompt"];
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      fields.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && draft[id] && !(el.value || "").trim()) el.value = draft[id];
+      });
+    }
+  } catch (e) {}
+
+  function save() {
+    const data = {};
+    fields.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) data[id] = el.value || "";
+    });
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {}
+  }
+  let t = null;
+  fields.forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(save, 500);
+    });
+  });
+  form.addEventListener("submit", () => {
+    try { localStorage.removeItem(key); } catch (e) {}
+  });
+})();
+</script>
 {% endblock %}

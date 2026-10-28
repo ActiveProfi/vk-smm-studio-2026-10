@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Команда · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h4 mb-1">Команда</h1>
+    <p class="text-muted small mb-0">
+      Агентство: <strong>{{ agency_name }}</strong>
+      · ваша роль: <strong>{{ my_role }}</strong>
+    </p>
+  </div>
+  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.manager_panel') }}">К панели</a>
+</div>
+
+{% if plan_warning %}
+<div class="alert alert-warning small">{{ plan_warning }}</div>
+{% endif %}
+
+{% if not is_owner %}
+<div class="panel mb-3">
+  <p class="mb-0">
+    Вы подключены к кабинету владельца. Каналы агентства видны в меню
+    <strong>Панель</strong> и <strong>Каналы</strong>.
+    Менять состав команды может только владелец.
+  </p>
+</div>
+{% else %}
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="panel h-100">
+      <h2 class="h6 mb-2">Добавить сотрудника</h2>
+      <p class="small text-muted mb-3">
+        До {{ max_members }} человек (сейчас {{ member_count }}).
+        Если логина ещё нет — укажите пароль, аккаунт создастся сам.
+      </p>
+      {% if form %}
+      <form method="post" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="mb-3">
+          {{ form.username.label(class="form-label") }}
+          {{ form.username(class="form-control") }}
+        </div>
+        <div class="mb-3">
+          {{ form.role.label(class="form-label") }}
+          {{ form.role(class="form-select") }}
+        </div>
+        <div class="mb-3">
+          {{ form.password.label(class="form-label") }}
+          {{ form.password(class="form-control") }}
+          <div class="form-text">Для уже существующего логина пароль не нужен.</div>
+        </div>
+        {{ form.submit(class="btn btn-accent") }}
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="panel">
+      <h2 class="h6 mb-3">Сотрудники</h2>
+      {% if members %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Логин</th>
+              <th>Роль</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in members %}
+            <tr>
+              <td><strong>{{ m.username }}</strong></td>
+              <td>
+                <form method="post" action="{{ url_for('team.change_role', member_id=m.id) }}" class="d-flex gap-2 align-items-center">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <select name="role" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+                    <option value="manager" {% if m.role == 'manager' %}selected{% endif %}>Менеджер</option>
+                    <option value="viewer" {% if m.role == 'viewer' %}selected{% endif %}>Наблюдатель</option>
+                  </select>
+                </form>
+              </td>
+              <td class="text-end">
+                <form method="post" action="{{ url_for('team.remove_member', member_id=m.id) }}"
+                      onsubmit="return confirm('Отключить сотрудника от команды?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Отключить</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted small mb-0">Пока никого нет. Добавьте первого менеджера слева.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel mt-3">
+      <h2 class="h6 mb-2">Что умеют роли</h2>
+      <ul class="small mb-0">
+        <li><strong>Владелец</strong> — всё: команда, оплата, каналы, публикация.</li>
+        <li><strong>Менеджер</strong> — контент, генерация, публикация, статистика и реклама по каналам агентства.</li>
+        <li><strong>Наблюдатель</strong> — только просмотр панели, статистики, рекламы и отчётов (без генерации и публикации).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -7,48 +7,222 @@
     <h1 class="h4 mb-1">Статистика ВК</h1>
     <p class="text-muted small mb-0">
       Канал: <strong>{{ workspace.name if workspace else '—' }}</strong>
+      {% if data and data.group_name %}
+        · группа: <strong>{{ data.group_name }}</strong>
+      {% endif %}
     </p>
   </div>
-  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.manager_panel') }}">К панели</a>
+  <div class="d-flex flex-wrap gap-2">
+    <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
+      <label class="small text-muted mb-0" for="posts">Постов:</label>
+      <select class="form-select form-select-sm" name="posts" id="posts" style="width:auto" onchange="this.form.submit()">
+        {% for n in [15, 30, 50, 100] %}
+        <option value="{{ n }}" {% if posts_limit == n %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+      <label class="small text-muted mb-0" for="days">Дней охвата:</label>
+      <select class="form-select form-select-sm" name="days" id="days" style="width:auto" onchange="this.form.submit()">
+        {% for n in [7, 14, 30] %}
+        <option value="{{ n }}" {% if days == n %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.manager_panel') }}">К панели</a>
+  </div>
 </div>
 
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 <p class="text-muted small">Проверьте токен и ID группы в настройках канала или в файле <code>.env</code>.</p>
 {% elif data %}
-<div class="row g-2">
-  <div class="col-md-4">
+
+{% if data.warnings %}
+<div class="alert alert-warning small">
+  {% for w in data.warnings %}
+  <div>{{ w }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
     <div class="panel text-center py-3 mb-0">
       <div class="text-muted small">Подписчики</div>
       <div class="stat-value">{{ data.members_count if data.members_count is not none else '—' }}</div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-6 col-md-3">
     <div class="panel text-center py-3 mb-0">
-      <div class="text-muted small">Лайки (последние посты)</div>
-      <div class="stat-value">{{ data.likes if data.likes is not none else '—' }}</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="panel text-center py-3 mb-0">
-      <div class="text-muted small">Просмотры (последние посты)</div>
+      <div class="text-muted small">Просмотры постов</div>
       <div class="stat-value">{{ data.views if data.views is not none else '—' }}</div>
+      <div class="text-muted small">по {{ data.posts_analyzed }} записям</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Лайки</div>
+      <div class="stat-value">{{ data.likes }}</div>
+      <div class="text-muted small">среднее {{ data.avg_likes if data.avg_likes is not none else '—' }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="panel text-center py-3 mb-0">
+      <div class="text-muted small">Комменты + репосты</div>
+      <div class="stat-value">{{ (data.comments or 0) + (data.reposts or 0) }}</div>
+      <div class="text-muted small">{{ data.comments }} комм. · {{ data.reposts }} реп.</div>
     </div>
   </div>
 </div>
-{% if data.reach is not none %}
-<div class="panel mt-2 py-2">
-  <span class="small text-muted">Охват / просмотры (stats.get):</span>
-  <strong>{{ data.reach }}</strong>
+
+{% if data.views_period is not none or data.visitors_period is not none %}
+<div class="panel mb-3">
+  <h2 class="h6 mb-2">Охват сообщества за {{ days }} дн.</h2>
+  <div class="row g-2">
+    <div class="col-md-4">
+      <div class="text-muted small">Просмотры (stats)</div>
+      <strong>{{ data.views_period if data.views_period is not none else '—' }}</strong>
+    </div>
+    <div class="col-md-4">
+      <div class="text-muted small">Посетители</div>
+      <strong>{{ data.visitors_period if data.visitors_period is not none else '—' }}</strong>
+    </div>
+    <div class="col-md-4">
+      <div class="text-muted small">За последний день</div>
+      <strong>{{ data.reach_today if data.reach_today is not none else '—' }}</strong>
+    </div>
+  </div>
+  {% if data.daily %}
+  <div class="table-responsive mt-3">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>День</th>
+          <th class="text-end">Просмотры</th>
+          <th class="text-end">Посетители</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in data.daily|reverse %}
+        <tr>
+          <td>{{ d.label }}</td>
+          <td class="text-end">{{ d.views }}</td>
+          <td class="text-end">{{ d.visitors }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
-{% if data.notes %}
-<ul class="mt-3 text-muted small">
-  {% for n in data.notes %}
-  <li>{{ n }}</li>
-  {% endfor %}
-</ul>
+
+{% if data.best_post %}
+<div class="panel mb-3">
+  <h2 class="h6 mb-2">Лучший пост по просмотрам</h2>
+  <p class="mb-1">{{ data.best_post.text }}</p>
+  <p class="small text-muted mb-2">{{ data.best_post.date }}
+    · просмотры {{ data.best_post.views }}
+    · лайки {{ data.best_post.likes }}
+    · комменты {{ data.best_post.comments }}
+    · репосты {{ data.best_post.reposts }}
+  </p>
+  {% if data.best_post.link %}
+  <a class="btn btn-sm btn-outline-dark" href="{{ data.best_post.link }}" target="_blank" rel="noopener">Открыть во ВК</a>
+  {% endif %}
+</div>
 {% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <div class="panel h-100">
+      <h2 class="h6 mb-3">Топ по просмотрам</h2>
+      {% if data.top_by_views %}
+      <ol class="mb-0 ps-3">
+        {% for p in data.top_by_views %}
+        <li class="mb-2">
+          <div>{{ p.text }}</div>
+          <div class="small text-muted">
+            {{ p.date }} · просмотры {{ p.views }} · лайки {{ p.likes }}
+            {% if p.link %} · <a href="{{ p.link }}" target="_blank" rel="noopener">ВК</a>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="text-muted small mb-0">Пока нет данных по постам.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="panel h-100">
+      <h2 class="h6 mb-3">Топ по вовлечённости</h2>
+      <p class="text-muted small">Лайки + комментарии + репосты</p>
+      {% if data.top_by_engagement %}
+      <ol class="mb-0 ps-3">
+        {% for p in data.top_by_engagement %}
+        <li class="mb-2">
+          <div>{{ p.text }}</div>
+          <div class="small text-muted">
+            {{ p.date }} · вовлеч. {{ p.engagement }} · просмотры {{ p.views }}
+            {% if p.link %} · <a href="{{ p.link }}" target="_blank" rel="noopener">ВК</a>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="text-muted small mb-0">Пока нет данных по постам.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if data.recent_posts %}
+<div class="panel mb-3">
+  <h2 class="h6 mb-3">Последние посты</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Текст</th>
+          <th class="text-end">Просм.</th>
+          <th class="text-end">Лайки</th>
+          <th class="text-end">Ком.</th>
+          <th class="text-end">Реп.</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in data.recent_posts %}
+        <tr>
+          <td class="text-nowrap small">{{ p.date }}</td>
+          <td class="small">{{ p.text }}</td>
+          <td class="text-end">{{ p.views }}</td>
+          <td class="text-end">{{ p.likes }}</td>
+          <td class="text-end">{{ p.comments }}</td>
+          <td class="text-end">{{ p.reposts }}</td>
+          <td class="text-end">
+            {% if p.link %}<a class="small" href="{{ p.link }}" target="_blank" rel="noopener">ВК</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if data.notes %}
+<details class="text-muted small mb-3">
+  <summary>Технические заметки</summary>
+  <ul class="mt-2 mb-0">
+    {% for n in data.notes %}
+    <li>{{ n }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+
 {% else %}
 <p class="text-muted">Нет данных статистики.</p>
 {% endif %}

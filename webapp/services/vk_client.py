@@ -274,60 +274,205 @@ def publish_draft(
             os.environ["VK_USER_TOKEN"] = prev_user
 
 
-def get_stats(*, user_token: str = "", user_group_id: str = "") -> dict:
+def get_stats(
+    *,
+    user_token: str = "",
+    user_group_id: str = "",
+    posts_limit: int = 30,
+    days: int = 7,
+) -> dict:
     """
-    Собирает простую статистику: подписчики, и по возможности просмотры/лайки.
+    Статистика канала для кабинета:
+    - подписчики;
+    - сумма лайков / комментариев / репостов / просмотров по последним постам;
+    - топ постов;
+    - по дням (stats.get), если токен позволяет.
     """
+    from datetime import datetime
+
     token, group_id = _env_token_and_group(user_token, user_group_id)
-    result = {
+    posts_limit = max(5, min(int(posts_limit or 30), 100))
+    days = max(1, min(int(days or 7), 30))
+
+    result: dict = {
         "group_id": group_id,
+        "group_name": "",
         "members_count": None,
-        "reach": None,
-        "likes": None,
-        "views": None,
+        "posts_limit": posts_limit,
+        "posts_analyzed": 0,
+        "likes": 0,
+        "comments": 0,
+        "reposts": 0,
+        "views": 0,
+        "avg_views": None,
+        "avg_likes": None,
+        "best_post": None,
+        "top_by_views": [],
+        "top_by_engagement": [],
+        "recent_posts": [],
+        "daily": [],
+        "reach_today": None,
+        "visitors_period": None,
+        "views_period": None,
         "notes": [],
+        "warnings": [],
     }
 
+    # Название группы
     try:
-        members = _vk_call_with_token(
-            "groups.getMembers",
-            {"group_id": group_id, "count": 0},
+        groups = _vk_call_with_token(
+            "groups.getById",
+            {"group_id": group_id, "fields": "members_count"},
             token,
         )
-        result["members_count"] = members.get("count")
+        if isinstance(groups, list) and groups:
+            g0 = groups[0]
+            result["group_name"] = (g0.get("name") or "").strip()
+            if g0.get("members_count") is not None:
+                result["members_count"] = g0.get("members_count")
     except Exception as exc:  # noqa: BLE001
-        result["notes"].append(f"Подписчики: {exc}")
+        result["notes"].append(f"Название группы: {exc}")
 
+    if result["members_count"] is None:
+        try:
+            members = _vk_call_with_token(
+                "groups.getMembers",
+                {"group_id": group_id, "count": 0},
+                token,
+            )
+            result["members_count"] = members.get("count")
+        except Exception as exc:  # noqa: BLE001
+            result["warnings"].append(
+                "Не удалось получить число подписчиков. Проверьте токен и ID группы."
+            )
+            result["notes"].append(f"Подписчики: {exc}")
+
+    # Посты стены
     try:
-        # Последние посты стены — для суммарных лайков/просмотров
         wall = _vk_call_with_token(
             "wall.get",
-            {"owner_id": f"-{group_id}", "count": 10},
+            {"owner_id": f"-{group_id}", "count": posts_limit, "filter": "owner"},
             token,
         )
         items = wall.get("items") or []
-        likes = 0
-        views = 0
+        posts: list[dict] = []
         for item in items:
-            likes += (item.get("likes") or {}).get("count", 0)
-            views += (item.get("views") or {}).get("count", 0)
-        result["likes"] = likes
-        result["views"] = views
-        result["notes"].append(f"Лайки и просмотры — сумма по последним {len(items)} постам.")
+            if not isinstance(item, dict):
+                continue
+            # пропускаем репосты чужих записей как «свои» метрики публикации
+            if item.get("copy_history"):
+                continue
+            likes = int((item.get("likes") or {}).get("count") or 0)
+            comments = int((item.get("comments") or {}).get("count") or 0)
+            reposts = int((item.get("reposts") or {}).get("count") or 0)
+            views = int((item.get("views") or {}).get("count") or 0)
+            engagement = likes + comments + reposts
+            text = (item.get("text") or "").replace("\n", " ").strip()
+            if len(text) > 120:
+                text = text[:117].rstrip() + "…"
+            if not text:
+                text = "(без текста — только визуал)"
+            date_ts = int(item.get("date") or 0)
+            date_label = (
+                datetime.fromtimestamp(date_ts).strftime("%d.%m.%Y %H:%M")
+                if date_ts
+                else "—"
+            )
+            post_id = item.get("id")
+            link = (
+                f"https://vk.com/wall-{group_id}_{post_id}"
+                if post_id is not None
+                else ""
+            )
+            posts.append(
+                {
+                    "id": post_id,
+                    "date": date_label,
+                    "date_ts": date_ts,
+                    "text": text,
+                    "likes": likes,
+                    "comments": comments,
+                    "reposts": reposts,
+                    "views": views,
+                    "engagement": engagement,
+                    "link": link,
+                }
+            )
+
+        result["posts_analyzed"] = len(posts)
+        result["likes"] = sum(p["likes"] for p in posts)
+        result["comments"] = sum(p["comments"] for p in posts)
+        result["reposts"] = sum(p["reposts"] for p in posts)
+        result["views"] = sum(p["views"] for p in posts)
+        if posts:
+            result["avg_views"] = round(result["views"] / len(posts))
+            result["avg_likes"] = round(result["likes"] / len(posts), 1)
+            result["best_post"] = max(posts, key=lambda p: (p["views"], p["engagement"]))
+            result["top_by_views"] = sorted(
+                posts, key=lambda p: (p["views"], p["engagement"]), reverse=True
+            )[:5]
+            result["top_by_engagement"] = sorted(
+                posts, key=lambda p: (p["engagement"], p["views"]), reverse=True
+            )[:5]
+            result["recent_posts"] = posts[:15]
+        result["notes"].append(
+            f"Метрики постов — по последним {len(posts)} записям со стены сообщества."
+        )
     except Exception as exc:  # noqa: BLE001
+        result["warnings"].append(
+            "Не удалось прочитать стену. Нужен токен с доступом к стене группы."
+        )
         result["notes"].append(f"Стена: {exc}")
 
+    # Статистика сообщества по дням (часто нужен токен администратора)
     try:
         stats = _vk_call_with_token(
             "stats.get",
-            {"group_id": group_id, "interval": "day", "intervals_count": 1},
+            {
+                "group_id": group_id,
+                "interval": "day",
+                "intervals_count": days,
+            },
             token,
         )
-        if isinstance(stats, list) and stats:
-            day = stats[-1]
-            visitors = day.get("visitors") or {}
-            result["reach"] = visitors.get("views") or visitors.get("visitors")
+        daily: list[dict] = []
+        views_sum = 0
+        visitors_sum = 0
+        if isinstance(stats, list):
+            for day in stats:
+                if not isinstance(day, dict):
+                    continue
+                visitors = day.get("visitors") or {}
+                day_views = int(visitors.get("views") or 0)
+                day_visitors = int(visitors.get("visitors") or 0)
+                period_from = day.get("period_from") or day.get("day") or ""
+                if isinstance(period_from, int):
+                    label = datetime.fromtimestamp(period_from).strftime("%d.%m")
+                else:
+                    label = str(period_from)[-5:] if period_from else "—"
+                daily.append(
+                    {
+                        "label": label,
+                        "views": day_views,
+                        "visitors": day_visitors,
+                    }
+                )
+                views_sum += day_views
+                visitors_sum += day_visitors
+        result["daily"] = daily
+        result["views_period"] = views_sum
+        result["visitors_period"] = visitors_sum
+        if daily:
+            result["reach_today"] = daily[-1].get("views")
+            result["notes"].append(
+                f"Охват сообщества — stats.get за последние {len(daily)} дн."
+            )
     except Exception as exc:  # noqa: BLE001
+        result["warnings"].append(
+            "Охват по дням недоступен с этим токеном "
+            "(нужны права администратора сообщества на статистику). "
+            "Цифры по постам выше всё равно считаются."
+        )
         result["notes"].append(f"stats.get: {exc}")
 
     return result

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import inspect, text
 
-from webapp.models import Rubric, Workspace, db
+from webapp.models import Rubric, User, Workspace, db
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -124,9 +124,48 @@ def ensure_schema() -> None:
         alters.append("ALTER TABLE draft ADD COLUMN client_comment TEXT DEFAULT ''")
     if _column_exists("draft", "id") and not _column_exists("draft", "content_plan_id"):
         alters.append("ALTER TABLE draft ADD COLUMN content_plan_id INTEGER")
+    if _column_exists("workspace", "id") and not _column_exists("workspace", "vk_ads_token"):
+        alters.append("ALTER TABLE workspace ADD COLUMN vk_ads_token TEXT DEFAULT ''")
+    if _column_exists("workspace", "id") and not _column_exists("workspace", "vk_ads_account_id"):
+        alters.append("ALTER TABLE workspace ADD COLUMN vk_ads_account_id TEXT DEFAULT ''")
+    for col, ddl in [
+        ("vk_ads_client_id", "ALTER TABLE workspace ADD COLUMN vk_ads_client_id TEXT DEFAULT ''"),
+        ("vk_ads_client_secret", "ALTER TABLE workspace ADD COLUMN vk_ads_client_secret TEXT DEFAULT ''"),
+        ("vk_ads_refresh_token", "ALTER TABLE workspace ADD COLUMN vk_ads_refresh_token TEXT DEFAULT ''"),
+        ("vk_ads_token_expires_at", "ALTER TABLE workspace ADD COLUMN vk_ads_token_expires_at TEXT DEFAULT ''"),
+        ("vk_ads_status", "ALTER TABLE workspace ADD COLUMN vk_ads_status TEXT DEFAULT ''"),
+        ("vk_ads_last_error", "ALTER TABLE workspace ADD COLUMN vk_ads_last_error TEXT DEFAULT ''"),
+        ("vk_ads_connected_at", "ALTER TABLE workspace ADD COLUMN vk_ads_connected_at TEXT DEFAULT ''"),
+    ]:
+        if _column_exists("workspace", "id") and not _column_exists("workspace", col):
+            alters.append(ddl)
+    if _column_exists("user", "id") and not _column_exists("user", "privacy_accepted_at"):
+        alters.append("ALTER TABLE user ADD COLUMN privacy_accepted_at TEXT DEFAULT ''")
     for stmt in alters:
         db.session.execute(text(stmt))
     if alters:
+        db.session.commit()
+    _migrate_seal_secrets()
+
+
+def _migrate_seal_secrets() -> None:
+    """Старые plaintext-токены в БД → enc:… (один раз при старте)."""
+    from webapp.services.secrets_box import is_sealed, seal
+
+    fields = ("vk_token", "vk_ads_token", "vk_ads_client_secret", "vk_ads_refresh_token")
+    changed = False
+    for ws in Workspace.query.all():
+        for field in fields:
+            val = (getattr(ws, field, None) or "").strip()
+            if val and not is_sealed(val):
+                setattr(ws, field, seal(val))
+                changed = True
+    for user in User.query.all():
+        val = (user.vk_token or "").strip()
+        if val and not is_sealed(val):
+            user.vk_token = seal(val)
+            changed = True
+    if changed:
         db.session.commit()
 
 
@@ -162,6 +201,8 @@ def seed_generic_rubrics(workspace: Workspace) -> None:
 
 def ensure_default_workspace_for_user(user) -> Workspace:
     """Если у пользователя нет каналов — создать пустой универсальный стартовый канал."""
+    from webapp.services.secrets_box import seal
+
     existing = Workspace.query.filter_by(user_id=user.id).first()
     if existing:
         if not user.active_workspace_id:
@@ -177,7 +218,7 @@ def ensure_default_workspace_for_user(user) -> Workspace:
         brand_site="",
         search_hint="",
         knowledge_text="",
-        vk_token=user.vk_token or "",
+        vk_token=seal(user.vk_token or ""),
         vk_group_id=user.vk_group_id or "",
         is_active=True,
     )

@@ -49,7 +49,9 @@ from webapp.auth import auth_bp
 from webapp.smm import smm_bp
 from webapp.workspaces import workspaces_bp
 from webapp.billing import billing_bp
+from webapp.team import team_bp
 from webapp.workspace_seed import ensure_default_workspace_for_user, ensure_schema
+from webapp.services import access as acc
 
 
 def _dev_skip_auth_enabled() -> bool:
@@ -89,12 +91,51 @@ def create_app() -> Flask:
 
     db.init_app(app)
     bcrypt.init_app(app)
-    CSRFProtect(app)
+    csrf = CSRFProtect(app)
 
     login_manager = LoginManager()
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Сначала войдите в систему."
     login_manager.init_app(app)
+
+    @app.errorhandler(400)
+    def handle_bad_request(err):
+        """CSRF и прочие 400 для AJAX — JSON, а не HTML (иначе в UI «Ошибка сети»)."""
+        wants_json = (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or (request.accept_mimetypes.best == "application/json")
+            or (request.content_type or "").startswith("application/json")
+        )
+        if wants_json:
+            from flask import jsonify
+
+            desc = getattr(err, "description", None) or str(err) or "Ошибка запроса"
+            low = str(desc).lower()
+            if "csrf" in low:
+                desc = (
+                    "Сессия устарела (ошибка безопасности формы). "
+                    "Обновите страницу (F5) и нажмите кнопку ещё раз."
+                )
+            return jsonify({"ok": False, "error": desc}), 400
+        return err
+
+    @app.errorhandler(413)
+    def handle_request_entity_too_large(err):
+        """Слишком большой файл — JSON для AJAX, иначе в UI «Ошибка сети»."""
+        wants_json = (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or (request.accept_mimetypes.best == "application/json")
+            or (request.content_type or "").startswith("multipart/form-data")
+        )
+        msg = (
+            "Файлы слишком большие для одной загрузки (лимит 64 МБ на все файлы сразу). "
+            "Загрузите по 1–2 фото за раз или уменьшите размер фото."
+        )
+        if wants_json:
+            from flask import jsonify
+
+            return jsonify({"ok": False, "error": msg}), 413
+        return msg, 413
 
     @login_manager.user_loader
     def load_user(user_id: str):
@@ -118,15 +159,22 @@ def create_app() -> Flask:
     def inject_active_workspace():
         if current_user.is_authenticated:
             ensure_default_workspace_for_user(current_user)
+            role = acc.role_for_user(current_user)
             return {
                 "active_workspace": current_user.get_active_workspace(),
                 "hide_nav_channel_bind": False,
                 "dev_skip_auth": bool(app.config.get("DEV_SKIP_AUTH")),
+                "user_role": acc.ROLE_LABELS.get(role, role),
+                "user_role_code": role,
+                "can_manage_team": acc.can(current_user, "team"),
             }
         return {
             "active_workspace": None,
             "hide_nav_channel_bind": False,
             "dev_skip_auth": bool(app.config.get("DEV_SKIP_AUTH")),
+            "user_role": "",
+            "user_role_code": "",
+            "can_manage_team": False,
         }
 
     from webapp.services.post_format import render_vk_post_html
@@ -139,6 +187,7 @@ def create_app() -> Flask:
     app.register_blueprint(smm_bp)
     app.register_blueprint(workspaces_bp)
     app.register_blueprint(billing_bp)
+    app.register_blueprint(team_bp)
 
     @app.route("/health")
     def health():

@@ -56,6 +56,12 @@ def _calc_total(plan_code: str, channel_package: str, channel_count) -> dict:
 @billing_bp.route("/", methods=["GET", "POST"])
 @login_required
 def index():
+    from webapp.services import access as acc
+
+    if not acc.can(current_user, "billing"):
+        flash("Оплату тарифа настраивает только владелец кабинета.", "warning")
+        return redirect(url_for("smm.manager_panel"))
+
     form = PaymentStubForm()
     if request.method == "GET" and not form.is_submitted():
         code = (getattr(current_user, "plan_code", None) or "free").strip()
@@ -115,6 +121,12 @@ def index():
             f"Тариф «{summary['plan_name']}», сумма в тесте: {summary['total']} ₽/мес.",
             "success",
         )
+        if plan_code in {"pro", "agency", "free"}:
+            flash(
+                "Следующий шаг: добавьте каналы и подключите кабинеты ВК Реклама.",
+                "info",
+            )
+            return redirect(url_for("smm.ads_connect"))
         return redirect(url_for("billing.index"))
 
     current_code = (getattr(current_user, "plan_code", None) or "free").strip()

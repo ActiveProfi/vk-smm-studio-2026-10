@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Журнал безопасности · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Безопасность</p>
+    <h1 class="h4 mb-1">Журнал действий</h1>
+    <p class="text-muted small mb-0">Входы, ошибки входа, ключевые изменения. Видит только владелец.</p>
+  </div>
+  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.manager_panel') }}">К панели</a>
+</div>
+
+<div class="panel">
+  {% if events %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Время (UTC)</th>
+          <th>Событие</th>
+          <th>Логин</th>
+          <th>IP</th>
+          <th>Детали</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr>
+          <td class="small text-nowrap">{{ e.created_at }}</td>
+          <td><code>{{ e.kind }}</code></td>
+          <td>{{ e.username or '—' }}</td>
+          <td class="small">{{ e.ip or '—' }}</td>
+          <td class="small text-muted">{{ e.detail or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small mb-0">Пока записей нет.</p>
+  {% endif %}
+</div>
+{% endblock %}

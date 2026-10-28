@@ -138,11 +138,18 @@
     <a class="btn btn-sm btn-outline-dark manager-go-after-select"
        data-href="{{ url_for('smm.calendar') }}"
        href="{{ url_for('smm.calendar') }}">Календарь</a>
-    <form method="post" action="{{ url_for('smm.auto_publish_now', workspace_id=ws.id) }}" class="d-inline">
+    <form method="post" action="{{ url_for('smm.auto_publish_now', workspace_id=ws.id) }}" class="d-inline-flex flex-wrap align-items-center gap-1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ url_for('smm.manager_panel') }}#channel-{{ ws.id }}">
+      <input type="hidden" name="enable_auto" value="1">
+      <select name="period" class="form-select form-select-sm" style="width:auto;min-width:8.5rem" title="Период автопубликации">
+        <option value="today" selected>Сегодня</option>
+        <option value="week">Неделя</option>
+        <option value="month">Месяц</option>
+      </select>
       <button type="submit" class="btn btn-sm btn-outline-dark">Автопубликация</button>
     </form>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('smm.client_approvals', workspace_id=ws.id) }}">Период…</a>
   </div>
 </div>
 {% endfor %}

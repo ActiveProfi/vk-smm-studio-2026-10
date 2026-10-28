@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Подключить ВК Ads · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">ВК Реклама</p>
+    <h1 class="h4 mb-1">Подключить кабинет к каналу</h1>
+    <p class="text-muted small mb-0">
+      Каналов: {{ channel_count }}{% if channel_limit %} · ориентир тарифа: до {{ channel_limit }}{% endif %}
+    </p>
+  </div>
+  <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.ads_cabinets') }}">К списку кабинетов</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="panel h-100" style="background:#f7f5f0">
+      <h2 class="h6 mb-2">Где взять данные</h2>
+      <ol class="small mb-0 ps-3">
+        <li class="mb-2">Откройте <a href="https://ads.vk.com/" target="_blank" rel="noopener">ads.vk.com</a> и войдите в нужный кабинет (свой или клиента).</li>
+        <li class="mb-2">Меню слева → <strong>Настройки</strong> → вкладка <strong>«Доступ к API»</strong>.</li>
+        <li class="mb-2">Если доступа ещё нет — нажмите «Запросить доступ», укажите ответственное лицо.</li>
+        <li class="mb-2">Скопируйте <strong>client_id</strong>. <strong>client_secret</strong> показывают коротко при выдаче — сохраните сразу.</li>
+        <li class="mb-2">Вернитесь сюда: выберите канал → вставьте данные → «Подключить кабинет».</li>
+        <li>Программа сама получит токены и привяжет кабинет к каналу. Обновление токена — автоматически.</li>
+      </ol>
+      <p class="small text-muted mt-3 mb-0">
+        Один канал = один кабинет. Для следующего клиента нажмите «Подключить ещё канал».
+      </p>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="panel">
+      {% if not workspaces %}
+      <p class="mb-2">Сначала добавьте хотя бы один канал.</p>
+      <a class="btn btn-accent" href="{{ url_for('workspaces.create_workspace') }}">Добавить канал</a>
+      {% else %}
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label" for="workspace_id">Канал</label>
+          <select class="form-select" name="workspace_id" id="workspace_id" required>
+            {% for ws in workspaces %}
+            {% set cab = cabinets.get(ws.id) %}
+            <option value="{{ ws.id }}"
+              {% if preselect == ws.id %}selected{% elif not preselect and loop.first %}selected{% endif %}>
+              {{ ws.name }}{% if cab and cab.status == 'connected' %} · уже подключен{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="account_id">Номер кабинета (необязательно)</label>
+          <input class="form-control" type="text" name="account_id" id="account_id"
+                 value="{{ selected_ws.vk_ads_account_id if selected_ws else '' }}"
+                 placeholder="Для вашей заметки, например 12345678">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="client_id">Client ID</label>
+          <input class="form-control" type="text" name="client_id" id="client_id"
+                 value="{{ selected_ws.vk_ads_client_id if selected_ws else '' }}"
+                 {% if not (selected_ws and selected_ws.vk_ads_client_id) %}required{% endif %}
+                 placeholder="Из ads.vk.com → Доступ к API" autocomplete="off">
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="client_secret">Client Secret</label>
+          <input class="form-control" type="password" name="client_secret" id="client_secret"
+                 placeholder="Если уже сохраняли — можно оставить пустым при повторном подключении"
+                 autocomplete="new-password">
+          <div class="form-text">Секрет не показываем после сохранения. При первой привязке поле обязательно.</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-accent" name="again" value="0">Подключить кабинет</button>
+          <button type="submit" class="btn btn-outline-dark" name="again" value="1">Подключить и ещё канал</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from flask import (
     Blueprint,
+    abort,
     current_app,
     flash,
     jsonify,
@@ -23,17 +24,51 @@ import threading
 import requests
 
 from webapp.forms import GenerateForm, PublishForm, ScheduleForm, parse_scheduled_for_parts
-from webapp.models import Draft, Rubric, db
-from webapp.services import materials_bag, vk_client
+from webapp.models import Draft, Rubric, Workspace, db
+from webapp.services import materials_bag, vk_client, vk_ads_client
+from webapp.services import access as acc
 from webapp.services import draft_visual as dv
 from webapp.services import workspace_visual as ws_visual
 from webapp.services.extract_text import extract_and_cache, is_allowed_filename, safe_storage_name
 from webapp.services import jobs as job_store
 from webapp.services.pipeline import run_pipeline, run_visual_for_draft
+from webapp.services import video_prompt_skill as video_skill
 from webapp.services import web_search as search_svc
 from webapp.workspace_seed import ensure_default_workspace_for_user
 
 smm_bp = Blueprint("smm", __name__)
+
+
+def _video_brief_from_form(form: GenerateForm) -> dict:
+    return video_skill.normalize_video_brief(
+        {
+            "object": form.video_object.data,
+            "action": form.video_action.data,
+            "place": form.video_place.data,
+            "camera": form.video_camera.data,
+            "light": form.video_light.data,
+            "style": form.video_style.data,
+            "negative": form.video_negative.data,
+        }
+    )
+
+
+def _video_brief_from_json(data: dict | None) -> dict:
+    data = data or {}
+    nested = data.get("video_brief") if isinstance(data.get("video_brief"), dict) else None
+    if nested:
+        return video_skill.normalize_video_brief(nested)
+    return video_skill.normalize_video_brief(
+        {
+            "object": data.get("video_object") or data.get("object"),
+            "action": data.get("video_action") or data.get("action"),
+            "place": data.get("video_place") or data.get("place"),
+            "camera": data.get("video_camera") or data.get("camera"),
+            "light": data.get("video_light") or data.get("light"),
+            "style": data.get("video_style") or data.get("style"),
+            "negative": data.get("video_negative") or data.get("negative"),
+        }
+    )
 
 
 def _active_workspace():
@@ -42,6 +77,36 @@ def _active_workspace():
     if ws:
         return ws
     return ensure_default_workspace_for_user(current_user)
+
+
+def _user_draft(draft_id: int) -> Draft:
+    """Черновик своего или доступного по команде канала."""
+    draft = Draft.query.filter_by(id=draft_id).first_or_404()
+    if draft.workspace_id:
+        ws = db.session.get(Workspace, draft.workspace_id)
+        if ws and acc.can_access_workspace(current_user, ws):
+            return draft
+    if draft.user_id == current_user.id:
+        return draft
+    abort(404)
+
+
+def _drafts_for_workspace(workspace_id: int | None = None):
+    ids = acc.accessible_workspace_ids(current_user)
+    if not ids:
+        q = Draft.query.filter_by(user_id=current_user.id)
+    else:
+        q = Draft.query.filter(Draft.workspace_id.in_(ids))
+    if workspace_id is not None:
+        q = q.filter(Draft.workspace_id == workspace_id)
+    return q
+
+
+def _require_perm(perm: str, workspace=None):
+    if not acc.can(current_user, perm, workspace):
+        flash("Недостаточно прав для этого действия.", "warning")
+        return False
+    return True
 
 
 def _sync_materials_for_workspace(workspace) -> None:
@@ -65,7 +130,9 @@ def _find_rubric(workspace, code: str) -> Rubric | None:
 
 
 def _workspace_visual_payload(ws, user_id: int | None = None) -> dict:
-    """Промпт стиля и URL референсов канала для генерации визуала."""
+    """Промпт стиля и URL/локальные файлы референсов канала для генерации визуала."""
+    from flask import current_app
+
     from webapp.services import marketer_brief as marketer_svc
 
     uid = user_id or current_user.id
@@ -76,10 +143,13 @@ def _workspace_visual_payload(ws, user_id: int | None = None) -> dict:
         if (r.get("name") or "").strip()
     ]
     base_style = (getattr(ws, "visual_style_prompt", None) or "").strip()
+    upload_root = Path(current_app.config["UPLOAD_FOLDER"])
+    local_files = ws_visual.resolve_reference_local_files(upload_root, uid, refs)
     return {
         "visual_style_prompt": marketer_svc.merge_visual_style(base_style, ws),
         "reference_image_urls": ws_visual.build_media_urls(uid, refs),
         "reference_image_names": ref_names,
+        "reference_local_files": local_files,
         "marketer_text_guidance": marketer_svc.text_agent_guidance(ws),
     }
 
@@ -175,6 +245,8 @@ def _run_generate_job(app, job_id: str, payload: dict) -> None:
                 enable_relevance=payload["enable_relevance"],
                 generate_image=payload["generate_image"],
                 generate_video=payload["generate_video"],
+                video_provider=payload.get("video_provider") or "kling",
+                video_brief=payload.get("video_brief") or {},
                 force_continue_if_unsafe=bool(payload.get("force_continue_if_unsafe")),
                 custom_prompt=payload["custom_prompt"],
                 rubric_title=payload["rubric_title"],
@@ -184,6 +256,7 @@ def _run_generate_job(app, job_id: str, payload: dict) -> None:
                 visual_style_prompt=payload.get("visual_style_prompt") or "",
                 reference_image_urls=payload.get("reference_image_urls") or [],
                 reference_image_names=payload.get("reference_image_names") or [],
+                reference_local_files=payload.get("reference_local_files") or [],
                 search_hint=payload["search_hint"],
                 marketer_text_guidance=payload.get("marketer_text_guidance") or "",
                 on_progress=progress,
@@ -480,19 +553,15 @@ def dashboard():
     ws = _active_workspace()
     from_channel = (request.args.get("from_channel") or "").strip()
     if from_channel.isdigit():
-        from webapp.models import Workspace
-
-        cand = Workspace.query.filter_by(
-            id=int(from_channel), user_id=current_user.id
-        ).first()
-        if cand:
+        cand = Workspace.query.filter_by(id=int(from_channel)).first()
+        if cand and acc.can_access_workspace(current_user, cand):
             current_user.active_workspace_id = cand.id
             db.session.commit()
             materials_bag.bind_workspace(cand.id)
             ws = cand
     _sync_materials_for_workspace(ws)
     drafts = (
-        Draft.query.filter_by(user_id=current_user.id, workspace_id=ws.id)
+        _drafts_for_workspace(ws.id)
         .order_by(Draft.created_at.desc())
         .limit(20)
         .all()
@@ -525,12 +594,8 @@ def manager_panel():
     from webapp.workspace_seed import ensure_default_workspace_for_user
 
     ensure_default_workspace_for_user(current_user)
-    workspaces = (
-        Workspace.query.filter_by(user_id=current_user.id)
-        .order_by(Workspace.id.asc())
-        .all()
-    )
-    drafts = Draft.query.filter_by(user_id=current_user.id).all()
+    workspaces = list(acc.list_workspaces(current_user, active_only=False))
+    drafts = _drafts_for_workspace().all()
     rubric_counts: dict[int, int] = {}
     if workspaces:
         rows = (
@@ -564,6 +629,9 @@ def manager_panel():
         status_label_ru=sq.status_label_ru,
         active_id=current_user.active_workspace_id,
         hide_nav_channel_bind=True,
+        user_role=acc.ROLE_LABELS.get(acc.role_for_user(current_user), ""),
+        can_generate=acc.can(current_user, "generate"),
+        can_publish=acc.can(current_user, "publish"),
     )
 
 
@@ -579,7 +647,7 @@ def generation_queue():
     from webapp.services import schedule_queue as sq
 
     drafts = (
-        Draft.query.filter_by(user_id=current_user.id)
+        _drafts_for_workspace()
         .filter(Draft.scheduled_for != "")
         .order_by(Draft.scheduled_for.asc())
         .all()
@@ -845,6 +913,8 @@ def generate_refresh_summary():
 def generate_start():
     """Запуск генерации в фоне + job_id для прогресса."""
     ws = _active_workspace()
+    if not _require_perm("generate", ws):
+        return jsonify({"ok": False, "error": "Недостаточно прав для генерации."}), 403
     _sync_materials_for_workspace(ws)
     form = GenerateForm()
     form.post_type.choices = _rubric_choices(ws)
@@ -908,6 +978,8 @@ def generate_start():
         "enable_relevance": bool(form.enable_relevance.data),
         "generate_image": bool(form.generate_image.data),
         "generate_video": bool(form.generate_video.data),
+        "video_provider": (form.video_provider.data or "kling").strip().lower(),
+        "video_brief": _video_brief_from_form(form),
         "workspace_theme": ws.theme or "",
         "workspace_knowledge": ws.knowledge_text or "",
         "brand_site": footer,
@@ -977,17 +1049,21 @@ def generate_job_approve(job_id: str):
 @login_required
 def generate():
     ws = _active_workspace()
+    if not acc.can(current_user, "generate", ws) and request.method == "POST":
+        flash("Недостаточно прав для генерации.", "warning")
+        return redirect(url_for("smm.manager_panel"))
     _sync_materials_for_workspace(ws)
     form = GenerateForm()
     form.post_type.choices = _rubric_choices(ws)
     continue_draft = None
     continue_draft_id = request.args.get("continue", type=int)
     if continue_draft_id:
-        continue_draft = Draft.query.filter_by(
-            id=continue_draft_id,
-            user_id=current_user.id,
-            workspace_id=ws.id,
-        ).first()
+        try:
+            continue_draft = _user_draft(continue_draft_id)
+            if continue_draft.workspace_id and continue_draft.workspace_id != ws.id:
+                continue_draft = None
+        except Exception:
+            continue_draft = None
 
     if not form.post_type.choices:
         flash("Сначала добавьте хотя бы одну рубрику в этом канале.", "warning")
@@ -1024,7 +1100,7 @@ def generate():
 @login_required
 def preview_visual_start(draft_id: int):
     """Догенерация визуала для существующего черновика — текст не пересоздаём."""
-    draft = Draft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    draft = _user_draft(draft_id)
     data = request.get_json(silent=True) or {}
     generate_image = bool(data.get("generate_image", True))
     generate_video = bool(data.get("generate_video", False))
@@ -1054,6 +1130,8 @@ def preview_visual_start(draft_id: int):
         "draft_id": draft_id_copy,
         "generate_image": generate_image,
         "generate_video": generate_video,
+        "video_provider": (data.get("video_provider") or "kling"),
+        "video_brief": _video_brief_from_json(data),
         **visual_ctx,
     }
     job_id = job_store.create_job(current_user.id, payload)
@@ -1072,10 +1150,13 @@ def preview_visual_start(draft_id: int):
                     agent_answer=agent_answer_copy,
                     generate_image=generate_image,
                     generate_video=generate_video,
+                    video_provider=payload.get("video_provider") or "kling",
+                    video_brief=payload.get("video_brief") or {},
                     brand_site=brand_footer,
                     visual_style_prompt=payload.get("visual_style_prompt") or "",
                     reference_image_urls=payload.get("reference_image_urls") or [],
                     reference_image_names=payload.get("reference_image_names") or [],
+                    reference_local_files=payload.get("reference_local_files") or [],
                     on_progress=progress,
                 )
                 has_visual = bool(pipeline.get("image_url") or pipeline.get("video_url"))
@@ -1170,7 +1251,7 @@ def preview_visual_start(draft_id: int):
 @login_required
 def preview_visual_selection(draft_id: int):
     """Сохранить галочки «что публиковать в VK»."""
-    draft = Draft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    draft = _user_draft(draft_id)
     data = request.get_json(silent=True) or {}
     dv.set_publish_flags(
         draft,
@@ -1192,7 +1273,7 @@ def preview_visual_selection(draft_id: int):
 @login_required
 def preview_text_start(draft_id: int):
     """Перегенерация текста прямо из черновика, без возврата на форму генерации."""
-    draft = Draft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    draft = _user_draft(draft_id)
     workspace = draft.workspace or _active_workspace()
     rubric = _find_rubric(workspace, draft.post_type or "")
     if not rubric:
@@ -1239,7 +1320,8 @@ def preview_text_start(draft_id: int):
 @smm_bp.route("/media/<int:user_id>/<path:filename>")
 @login_required
 def media_file(user_id: int, filename: str):
-    if current_user.id != user_id:
+    # Свои файлы или файлы владельца агентства (для менеджеров команды)
+    if current_user.id != user_id and acc.agency_owner_id(current_user) != user_id:
         return "Доступ запрещён", 403
     base_dir = Path(current_app.config["UPLOAD_FOLDER"]) / str(user_id)
     return send_from_directory(base_dir, filename)
@@ -1248,7 +1330,7 @@ def media_file(user_id: int, filename: str):
 @smm_bp.route("/preview/<int:draft_id>/upload-visual", methods=["POST"])
 @login_required
 def preview_upload_visual(draft_id: int):
-    draft = Draft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    draft = _user_draft(draft_id)
     image_file = request.files.get("image_visual")
     video_file = request.files.get("video_visual")
     allowed_image = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -1301,7 +1383,7 @@ def preview_upload_visual(draft_id: int):
 @smm_bp.route("/preview/<int:draft_id>/download/<kind>")
 @login_required
 def preview_download_visual(draft_id: int, kind: str):
-    draft = Draft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    draft = _user_draft(draft_id)
     media_url = draft.image_url if kind == "image" else draft.video_url if kind == "video" else ""
     if not media_url:
         flash("Файл для скачивания не найден.", "warning")
@@ -1337,7 +1419,7 @@ def preview_download_visual(draft_id: int, kind: str):
 @smm_bp.route("/preview/<int:draft_id>/visual/<kind>")
 @login_required
 def preview_visual_full(draft_id: int, kind: str):
-    draft = Draft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    draft = _user_draft(draft_id)
     if kind == "image":
         media_url = draft.image_url or ""
     elif kind == "video":
@@ -1361,13 +1443,15 @@ def preview_visual_full(draft_id: int, kind: str):
 @smm_bp.route("/preview/<int:draft_id>", methods=["GET", "POST"])
 @login_required
 def preview(draft_id: int):
-    draft = Draft.query.filter_by(id=draft_id, user_id=current_user.id).first_or_404()
+    draft = _user_draft(draft_id)
     ws = draft.workspace or _active_workspace()
     publish_form = PublishForm()
     schedule_form = ScheduleForm()
     action = request.form.get("form_action", "")
 
-    token = (ws.vk_token if ws else "") or current_user.vk_token or ""
+    from webapp.services.secrets_box import reveal
+
+    token = reveal(ws.vk_token if ws else "") or reveal(current_user.vk_token) or ""
     group_id = (ws.vk_group_id if ws else "") or current_user.vk_group_id or ""
     vk_ready = False
     vk_group_label = group_id or "—"
@@ -1385,6 +1469,8 @@ def preview(draft_id: int):
         vk_ready = bool(token and group_id)
 
     if request.method == "POST" and action == "publish" and publish_form.validate_on_submit():
+        if not _require_perm("publish", ws):
+            return redirect(url_for("smm.preview", draft_id=draft.id))
         if not vk_ready:
             flash("Сначала подключите ВК в настройках канала.", "warning")
             return redirect(url_for("smm.preview", draft_id=draft.id))
@@ -1475,6 +1561,9 @@ def preview(draft_id: int):
         client_approve_url=client_url,
         require_client_approval=bool(ws.require_client_approval) if ws else False,
         plan_status=plan_status,
+        video_camera_choices=video_skill.CAMERA_CHOICES,
+        video_light_choices=video_skill.LIGHT_CHOICES,
+        video_style_choices=video_skill.STYLE_CHOICES,
     )
 
 
@@ -1483,7 +1572,7 @@ def preview(draft_id: int):
 def calendar():
     ws = _active_workspace()
     drafts = (
-        Draft.query.filter_by(user_id=current_user.id, workspace_id=ws.id)
+        _drafts_for_workspace(ws.id)
         .filter(Draft.scheduled_for != "")
         .order_by(Draft.scheduled_for.asc())
         .all()
@@ -1507,13 +1596,271 @@ def stats():
     ws = _active_workspace()
     error = ""
     data = None
-    token = ws.vk_token or current_user.vk_token or ""
+    from webapp.services.secrets_box import reveal
+
+    token = reveal(ws.vk_token) or reveal(current_user.vk_token) or ""
     group_id = ws.vk_group_id or current_user.vk_group_id or ""
     try:
-        data = vk_client.get_stats(user_token=token, user_group_id=group_id)
+        posts_limit = int(request.args.get("posts") or 30)
+    except (TypeError, ValueError):
+        posts_limit = 30
+    try:
+        days = int(request.args.get("days") or 7)
+    except (TypeError, ValueError):
+        days = 7
+    posts_limit = max(15, min(posts_limit, 100))
+    days = max(7, min(days, 30))
+    try:
+        data = vk_client.get_stats(
+            user_token=token,
+            user_group_id=group_id,
+            posts_limit=posts_limit,
+            days=days,
+        )
     except Exception as exc:  # noqa: BLE001
         error = str(exc)
-    return render_template("smm/stats.html", data=data, error=error, workspace=ws)
+    return render_template(
+        "smm/stats.html",
+        data=data,
+        error=error,
+        workspace=ws,
+        posts_limit=posts_limit,
+        days=days,
+    )
+
+
+@smm_bp.route("/ads")
+@login_required
+def ads():
+    """Редирект на портфель кабинетов (основной экран Ads)."""
+    return redirect(url_for("smm.ads_cabinets"))
+
+
+@smm_bp.route("/ads/cabinets")
+@login_required
+def ads_cabinets():
+    """Список рекламных кабинетов: канал → статус → вход в ads.vk.com."""
+    from webapp.services import ads_portfolio as ads_pf
+
+    plan_ok = ads_pf.plan_includes_ads(current_user)
+    plan_warning = ""
+    if not plan_ok:
+        plan_warning = (
+            "По тарифу ВК Реклама доступна на Pro / Agency (или в триале). "
+            "Оформите тариф в разделе «Оплата»."
+        )
+    cabinets = ads_pf.list_cabinets(current_user)
+    connected = sum(1 for c in cabinets if c["status"] == "connected")
+    return render_template(
+        "smm/ads_cabinets.html",
+        cabinets=cabinets,
+        connected_count=connected,
+        channel_count=len(cabinets),
+        channel_limit=ads_pf.suggested_channel_limit(current_user),
+        plan_ok=plan_ok,
+        plan_warning=plan_warning,
+        plan_code=(getattr(current_user, "plan_code", None) or "free"),
+    )
+
+
+@smm_bp.route("/ads/connect", methods=["GET", "POST"])
+@login_required
+def ads_connect():
+    """Мастер: подключить кабинет VK Ads к каналу (с подсказками)."""
+    from webapp.services import ads_portfolio as ads_pf
+
+    if not ads_pf.plan_includes_ads(current_user):
+        flash("Сначала выберите тариф с ВК Реклама (Pro / Agency) в «Оплата».", "warning")
+        return redirect(url_for("billing.index"))
+
+    workspaces = list(acc.list_workspaces(current_user, active_only=True))
+    limit = ads_pf.suggested_channel_limit(current_user)
+    preselect = request.args.get("workspace_id", type=int)
+
+    if request.method == "POST":
+        if not _require_perm("ads"):
+            return redirect(url_for("smm.ads_cabinets"))
+        try:
+            ws_id = int(request.form.get("workspace_id") or 0)
+        except (TypeError, ValueError):
+            ws_id = 0
+        ws = acc.get_workspace_or_404(current_user, ws_id) if ws_id else None
+        if not ws:
+            flash("Выберите канал.", "warning")
+            return redirect(url_for("smm.ads_connect"))
+        client_id = (request.form.get("client_id") or "").strip()
+        client_secret = (request.form.get("client_secret") or "").strip()
+        account_id = (request.form.get("account_id") or "").strip()
+        # если secret пустой — оставить сохранённый
+        if not client_secret:
+            from webapp.services.secrets_box import reveal
+
+            client_secret = reveal(ws.vk_ads_client_secret)
+        if not client_id:
+            client_id = (ws.vk_ads_client_id or "").strip()
+        try:
+            result = ads_pf.connect_workspace(
+                ws,
+                client_id=client_id,
+                client_secret=client_secret,
+                account_id=account_id or (ws.vk_ads_account_id or ""),
+            )
+            db.session.commit()
+            flash(result.get("message") or f"Канал «{ws.name}» подключён к VK Реклама.", "success")
+            if request.form.get("again") == "1":
+                return redirect(url_for("smm.ads_connect"))
+            return redirect(url_for("smm.ads_cabinets"))
+        except Exception as exc:  # noqa: BLE001
+            db.session.rollback()
+            ws.vk_ads_status = "error"
+            ws.vk_ads_last_error = str(exc)[:500]
+            db.session.commit()
+            flash(str(exc), "danger")
+            return redirect(url_for("smm.ads_connect", workspace_id=ws.id))
+
+    cabinets = {c["workspace_id"]: c for c in ads_pf.list_cabinets(current_user)}
+    selected_ws = None
+    if preselect:
+        selected_ws = next((w for w in workspaces if w.id == preselect), None)
+    if not selected_ws and workspaces:
+        selected_ws = workspaces[0]
+    return render_template(
+        "smm/ads_connect.html",
+        workspaces=workspaces,
+        cabinets=cabinets,
+        preselect=preselect or (selected_ws.id if selected_ws else None),
+        selected_ws=selected_ws,
+        channel_limit=limit,
+        channel_count=len(workspaces),
+    )
+
+
+@smm_bp.route("/ads/channel/<int:workspace_id>")
+@login_required
+def ads_channel(workspace_id: int):
+    """Кампании одного канала (кабинет, привязанный к каналу)."""
+    from webapp.services import ads_portfolio as ads_pf
+
+    ws = acc.get_workspace_or_404(current_user, workspace_id)
+    error = ""
+    data = None
+    if not (ws.vk_ads_token or "").strip() and not (
+        (ws.vk_ads_client_id or "").strip() and (ws.vk_ads_client_secret or "").strip()
+    ):
+        error = "Кабинет ещё не подключён. Откройте мастер подключения."
+    else:
+        try:
+            data = vk_ads_client.get_campaigns(workspace=ws, limit=50)
+            db.session.commit()
+        except Exception as exc:  # noqa: BLE001
+            error = str(exc)
+    return render_template(
+        "smm/ads.html",
+        data=data,
+        error=error,
+        workspace=ws,
+        connected=(ws.vk_ads_status or "") == "connected" or bool(data),
+        plan_code=(getattr(current_user, "plan_code", None) or "free"),
+        plan_ok=ads_pf.plan_includes_ads(current_user),
+        plan_warning="",
+        account_id=(ws.vk_ads_account_id or "").strip(),
+        has_saved_token=bool((ws.vk_ads_token or "").strip()),
+        portfolio_mode=True,
+    )
+
+
+@smm_bp.route("/ads/report", methods=["GET", "POST"])
+@login_required
+def ads_report():
+    """Отчёт VK Реклама: один или несколько выбранных каналов за период."""
+    from webapp.services import ads_portfolio as ads_pf
+    from openpyxl import Workbook
+    from io import BytesIO as Bio
+
+    if not ads_pf.plan_includes_ads(current_user):
+        flash("Отчёты ВК Реклама доступны на тарифе с Ads.", "warning")
+        return redirect(url_for("billing.index"))
+
+    cabinets = ads_pf.list_cabinets(current_user)
+    date_from, date_to = ads_pf.default_period(7)
+    if request.method == "POST":
+        date_from = (request.form.get("date_from") or date_from).strip()
+        date_to = (request.form.get("date_to") or date_to).strip()
+        raw_ids = request.form.getlist("workspace_ids")
+    else:
+        date_from = (request.args.get("date_from") or date_from).strip()
+        date_to = (request.args.get("date_to") or date_to).strip()
+        raw_ids = request.args.getlist("workspace_ids")
+        if not raw_ids and request.args.get("workspace_id"):
+            raw_ids = [request.args.get("workspace_id")]
+
+    selected_ids: list[int] = []
+    for x in raw_ids:
+        try:
+            selected_ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+
+    report = None
+    if selected_ids:
+        report = ads_pf.build_ads_report(current_user, selected_ids, date_from, date_to)
+        db.session.commit()
+
+    if request.method == "POST" and request.form.get("export") == "xlsx" and report:
+        wb = Workbook()
+        ws_sheet = wb.active
+        ws_sheet.title = "VK Ads"
+        ws_sheet.append(
+            ["Канал", "ID кабинета", "Статус", "Расход ₽", "Показы", "Клики", "CTR %", "Кампаний", "Ошибка"]
+        )
+        for ch in report["channels"]:
+            ws_sheet.append(
+                [
+                    ch["channel_name"],
+                    ch.get("account_id") or "",
+                    ch.get("status") or "",
+                    ch.get("spent") if ch.get("spent") is not None else "",
+                    ch.get("shows") if ch.get("shows") is not None else "",
+                    ch.get("clicks") if ch.get("clicks") is not None else "",
+                    ch.get("ctr") if ch.get("ctr") is not None else "",
+                    ch.get("campaigns") or 0,
+                    ch.get("error") or "",
+                ]
+            )
+        tot = report["totals"]
+        ws_sheet.append([])
+        ws_sheet.append(
+            [
+                "ИТОГО",
+                "",
+                "",
+                tot.get("spent"),
+                tot.get("shows"),
+                tot.get("clicks"),
+                tot.get("ctr"),
+                "",
+                "",
+            ]
+        )
+        buf = Bio()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f"vk-ads-report_{date_from}_{date_to}.xlsx"
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    return render_template(
+        "smm/ads_report.html",
+        cabinets=cabinets,
+        selected_ids=set(selected_ids),
+        date_from=date_from,
+        date_to=date_to,
+        report=report,
+    )
 
 
 @smm_bp.route("/report")
@@ -1544,7 +1891,7 @@ def _resolve_report_period(workspace_id: int | None = None):
     from webapp.models import Workspace
 
     if workspace_id:
-        ws = Workspace.query.filter_by(id=workspace_id, user_id=current_user.id).first_or_404()
+        ws = acc.get_workspace_or_404(current_user, workspace_id)
         current_user.active_workspace_id = ws.id
         db.session.commit()
     else:
@@ -1618,19 +1965,39 @@ def month_report_pdf(workspace_id: int):
 @smm_bp.route("/auto-publish/<int:workspace_id>", methods=["POST"])
 @login_required
 def auto_publish_now(workspace_id: int | None = None):
-    """Запустить автопубликацию due-постов (кнопка менеджера)."""
-    from webapp.models import Workspace
+    """Запустить автопубликацию due-постов (кнопка менеджера / согласования)."""
     from webapp.services import business as biz
 
     if workspace_id:
-        ws = Workspace.query.filter_by(id=workspace_id, user_id=current_user.id).first_or_404()
+        ws = acc.get_workspace_or_404(current_user, workspace_id)
     else:
         ws = _active_workspace()
-    result = biz.run_auto_publish_for_workspace(ws)
+
+    period = (request.form.get("period") or "today").strip().lower()
+    date_from_s = (request.form.get("date_from") or "").strip()
+    date_to_s = (request.form.get("date_to") or "").strip()
+    enable_auto = request.form.get("enable_auto") == "1"
+    # кнопка всегда force; таймер по-прежнему требует галочку
+    d_from, d_to, period_label = biz.resolve_auto_publish_period(
+        period, date_from_s, date_to_s
+    )
+    result = biz.run_auto_publish_for_workspace(
+        ws,
+        date_from=d_from,
+        date_to=d_to,
+        force=True,
+        enable_auto=enable_auto,
+    )
     if not result.get("ok"):
         flash(result.get("error") or "Автопубликация не выполнена.", "warning")
     else:
-        msg = f"Проверено: {result.get('checked', 0)}. Опубликовано: {result.get('published', 0)}."
+        msg = (
+            f"Период: {period_label}. "
+            f"Проверено: {result.get('checked', 0)}. "
+            f"Опубликовано: {result.get('published', 0)}."
+        )
+        if enable_auto:
+            msg += " Автопубликация канала включена."
         errs = result.get("errors") or []
         if errs:
             msg += " Ошибки: " + "; ".join(errs[:5])
@@ -1639,6 +2006,27 @@ def auto_publish_now(workspace_id: int | None = None):
             flash(msg, "success")
     nxt = request.form.get("next") or request.referrer or url_for("smm.manager_panel")
     return redirect(nxt)
+
+
+@smm_bp.route("/approvals/<int:workspace_id>/settings", methods=["POST"])
+@login_required
+def client_approvals_settings(workspace_id: int):
+    """Включить согласование и/или автопубликацию прямо со страницы согласования."""
+    from webapp.services import business as biz
+
+    ws = acc.get_workspace_or_404(current_user, workspace_id)
+    if not acc.can(current_user, "workspace_settings", ws):
+        flash("Менять настройки канала может владелец или менеджер.", "warning")
+        return redirect(url_for("smm.client_approvals", workspace_id=ws.id))
+
+    ws.require_client_approval = request.form.get("require_client_approval") == "1"
+    ws.auto_publish_enabled = request.form.get("auto_publish_enabled") == "1"
+    db.session.commit()
+    parts = []
+    parts.append("согласование " + ("вкл." if ws.require_client_approval else "выкл."))
+    parts.append("автопубликация " + ("вкл." if ws.auto_publish_enabled else "выкл."))
+    flash("Сохранено: " + ", ".join(parts) + ".", "success")
+    return redirect(url_for("smm.client_approvals", workspace_id=ws.id))
 
 
 
@@ -1653,7 +2041,7 @@ def client_approvals(workspace_id: int | None = None):
     from webapp.services import schedule_queue as sq
 
     if workspace_id:
-        ws = Workspace.query.filter_by(id=workspace_id, user_id=current_user.id).first_or_404()
+        ws = acc.get_workspace_or_404(current_user, workspace_id)
         current_user.active_workspace_id = ws.id
         db.session.commit()
     else:
@@ -1674,6 +2062,7 @@ def client_approvals(workspace_id: int | None = None):
             }
         )
     pending_count = biz.count_pending_plan_approvals(ws)
+    ap_info = biz.auto_publish_queue_info(ws)
 
     return render_template(
         "smm/client_approvals.html",
@@ -1683,6 +2072,8 @@ def client_approvals(workspace_id: int | None = None):
         pending_count=pending_count,
         format_publish_at=sq.format_publish_at,
         require_client_approval=bool(ws.require_client_approval),
+        auto_publish_enabled=bool(ws.auto_publish_enabled),
+        auto_publish_info=ap_info,
     )
 
 
@@ -1693,7 +2084,7 @@ def client_approvals_to_calendar(workspace_id: int, plan_id: int):
     from webapp.models import ContentPlanBatch, Workspace
     from webapp.services import business as biz
 
-    ws = Workspace.query.filter_by(id=workspace_id, user_id=current_user.id).first_or_404()
+    ws = acc.get_workspace_or_404(current_user, workspace_id)
     plan = ContentPlanBatch.query.filter_by(id=plan_id, workspace_id=ws.id).first_or_404()
     if (plan.client_status or "") != "approved":
         flash("В календарь можно внести только согласованный клиентом план.", "warning")
@@ -1729,7 +2120,7 @@ def client_approvals_regen_link(workspace_id: int):
     from webapp.models import Workspace
     from webapp.services import business as biz
 
-    ws = Workspace.query.filter_by(id=workspace_id, user_id=current_user.id).first_or_404()
+    ws = acc.get_workspace_or_404(current_user, workspace_id)
     biz.regenerate_client_token(ws)
     flash("Ссылка обновлена. Старую ссылку клиенту больше не отправляйте.", "info")
     return redirect(url_for("smm.client_approvals", workspace_id=ws.id))

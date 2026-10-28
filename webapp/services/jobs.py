@@ -22,7 +22,10 @@ STEP_LABELS = {
     "content_plan": "ИИ-маркетолог составляет план…",
     "visual_prepare": "Идёт генерация визуала…",
     "image_gpt_image_2": "Идёт генерация визуала…",
-    "video_kling": "Идёт генерация визуала…",
+    "video_kling": "Идёт генерация визуала… Kling",
+    "video_minimax": "Идёт генерация визуала… MiniMax",
+    "video_veo": "Идёт генерация визуала… Veo",
+    "video_hailuo": "Идёт генерация визуала… Hailuo",
     "save_draft": "Сохранение черновика…",
     "done": "Готово",
     "error": "Ошибка",
@@ -38,6 +41,9 @@ STEP_PERCENTS = {
     "visual_prepare": 52,
     "image_gpt_image_2": 65,
     "video_kling": 82,
+    "video_minimax": 82,
+    "video_veo": 82,
+    "video_hailuo": 82,
     "save_draft": 95,
     "done": 100,
     "error": 100,
@@ -206,7 +212,10 @@ def make_progress_callback(job_id: str) -> Callable[[str, str | None], None]:
             job = _JOBS.get(job_id)
             if (
                 job
-                and step in ("visual_prepare", "image_gpt_image_2", "video_kling")
+                and (
+                    step in ("visual_prepare", "image_gpt_image_2")
+                    or str(step).startswith("video_")
+                )
                 and message
                 and "прошло" in message
             ):

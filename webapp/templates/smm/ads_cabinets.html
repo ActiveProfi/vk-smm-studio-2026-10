@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Рекламные кабинеты · VK SMM{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <p class="lk-kicker mb-1">Кабинет агентства</p>
+    <h1 class="h4 mb-1">Рекламные кабинеты</h1>
+    <p class="text-muted small mb-0">
+      Каналов: <strong>{{ channel_count }}</strong>
+      {% if channel_limit %}· ориентир тарифа: до {{ channel_limit }}{% endif %}
+      · подключено Ads: <strong>{{ connected_count }}</strong>
+    </p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-sm btn-accent" href="{{ url_for('smm.ads_connect') }}">Подключить ВК Ads</a>
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.ads_report') }}">Отчёт Ads</a>
+    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('workspaces.list_workspaces') }}">Каналы</a>
+  </div>
+</div>
+
+{% if plan_warning %}
+<div class="alert alert-warning small">{{ plan_warning }}</div>
+{% endif %}
+
+{% if not cabinets %}
+<div class="panel">
+  <p class="mb-2">Пока нет каналов.</p>
+  <p class="small text-muted mb-3">Сначала добавьте каналы (в пределах тарифа), затем подключите к каждому свой кабинет VK Реклама.</p>
+  <a class="btn btn-accent" href="{{ url_for('workspaces.create_workspace') }}">Добавить канал</a>
+</div>
+{% else %}
+<div class="panel">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Канал</th>
+          <th>Кабинет / Client ID</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cabinets %}
+        <tr>
+          <td>
+            <strong>{{ c.channel_name }}</strong>
+            {% if c.connected_at %}
+            <div class="text-muted small">подключено {{ c.connected_at }}</div>
+            {% endif %}
+          </td>
+          <td class="small">
+            {% if c.account_id %}<div>ID: <code>{{ c.account_id }}</code></div>{% endif %}
+            {% if c.client_id %}<div>client_id: <code>{{ c.client_id[:8] }}…</code></div>{% endif %}
+            {% if not c.account_id and not c.client_id %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if c.status == 'connected' %}
+              <span class="badge text-bg-success">{{ c.status_label }}</span>
+            {% elif c.status == 'error' %}
+              <span class="badge text-bg-danger">{{ c.status_label }}</span>
+              {% if c.last_error %}<div class="text-danger small mt-1">{{ c.last_error[:120] }}</div>{% endif %}
+            {% else %}
+              <span class="badge text-bg-secondary">{{ c.status_label }}</span>
+            {% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-dark" href="{{ c.cabinet_url }}" target="_blank" rel="noopener">В VK Реклама</a>
+            {% if c.status == 'connected' %}
+            <a class="btn btn-sm btn-outline-dark" href="{{ url_for('smm.ads_channel', workspace_id=c.workspace_id) }}">Кампании</a>
+            {% else %}
+            <a class="btn btn-sm btn-accent" href="{{ url_for('smm.ads_connect', workspace_id=c.workspace_id) }}">Подключить</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="text-muted small mt-3 mb-0">
+  Каждый канал связывается со своим кабинетом. Быстрый вход «В VK Реклама» открывает ads.vk.com — без захода в настройки канала.
+</p>
+{% endif %}
+{% endblock %}

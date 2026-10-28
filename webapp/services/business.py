@@ -398,7 +398,61 @@ def can_auto_publish(draft: Draft, ws: Workspace) -> tuple[bool, str]:
     return True, "ok"
 
 
-def due_auto_publish_drafts(ws: Workspace) -> list[Draft]:
+def _parse_period_date(raw: str | None):
+    """YYYY-MM-DD → date или None."""
+    from datetime import date
+
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def resolve_auto_publish_period(
+    period: str = "today",
+    date_from: str = "",
+    date_to: str = "",
+) -> tuple[Any, Any, str]:
+    """Вернуть (date_from, date_to, подпись периода) для фильтра автопубликации."""
+    from datetime import date, timedelta
+
+    today = sq.now_tz().date()
+    key = (period or "today").strip().lower()
+
+    if key == "week":
+        # текущая неделя Пн–Вс
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+        return start, end, f"{start.strftime('%d.%m.%Y')} — {end.strftime('%d.%m.%Y')}"
+
+    if key == "month":
+        start = today.replace(day=1)
+        if today.month == 12:
+            end = date(today.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end = date(today.year, today.month + 1, 1) - timedelta(days=1)
+        return start, end, f"{start.strftime('%d.%m.%Y')} — {end.strftime('%d.%m.%Y')}"
+
+    if key == "custom":
+        start = _parse_period_date(date_from) or today
+        end = _parse_period_date(date_to) or start
+        if end < start:
+            start, end = end, start
+        return start, end, f"{start.strftime('%d.%m.%Y')} — {end.strftime('%d.%m.%Y')}"
+
+    # today
+    return today, today, today.strftime("%d.%m.%Y")
+
+
+def due_auto_publish_drafts(
+    ws: Workspace,
+    *,
+    date_from=None,
+    date_to=None,
+) -> list[Draft]:
     drafts = (
         Draft.query.filter_by(workspace_id=ws.id)
         .filter(Draft.scheduled_for != "")
@@ -407,6 +461,15 @@ def due_auto_publish_drafts(ws: Workspace) -> list[Draft]:
     )
     out = []
     for d in drafts:
+        if date_from is not None or date_to is not None:
+            scheduled = sq.parse_scheduled_dt(d.scheduled_for)
+            if not scheduled:
+                continue
+            day = scheduled.date()
+            if date_from is not None and day < date_from:
+                continue
+            if date_to is not None and day > date_to:
+                continue
         ok, _ = can_auto_publish(d, ws)
         if ok:
             out.append(d)
@@ -685,18 +748,36 @@ def month_title_ru(year: int, month: int) -> str:
     return f"{name} {year}"
 
 
-def run_auto_publish_for_workspace(ws: Workspace) -> dict[str, Any]:
-    """Публикует due-черновики канала. Возвращает счётчики."""
+def run_auto_publish_for_workspace(
+    ws: Workspace,
+    *,
+    date_from=None,
+    date_to=None,
+    force: bool = False,
+    enable_auto: bool = False,
+) -> dict[str, Any]:
+    """Публикует due-черновики канала. Возвращает счётчики.
+
+    force=True — разовый запуск с кнопки, даже если галочка автопубликации выключена.
+    enable_auto=True — включить автопубликацию канала для следующих прогонов таймера.
+    date_from / date_to — ограничить по дате scheduled_for (включительно).
+    """
     import os
 
     from webapp.services import draft_visual as dv
     from webapp.services import vk_client
 
-    if not bool(ws.auto_publish_enabled):
+    if enable_auto and not bool(ws.auto_publish_enabled):
+        ws.auto_publish_enabled = True
+        db.session.commit()
+
+    if not force and not bool(ws.auto_publish_enabled):
         return {"ok": False, "error": "Автопубликация выключена в настройках канала.", "published": 0, "errors": []}
 
     # Как при ручной публикации: канал → иначе .env
-    token = (ws.vk_token or "").strip() or os.environ.get("VK_USER_TOKEN", "").strip() or os.environ.get(
+    from webapp.services.secrets_box import reveal
+
+    token = reveal(ws.vk_token) or os.environ.get("VK_USER_TOKEN", "").strip() or os.environ.get(
         "VK_COMMUNITY_TOKEN", ""
     ).strip()
     group_id = (ws.vk_group_id or "").strip() or os.environ.get("VK_GROUP_ID", "").strip()
@@ -708,7 +789,7 @@ def run_auto_publish_for_workspace(ws: Workspace) -> dict[str, Any]:
             "errors": [],
         }
 
-    due = due_auto_publish_drafts(ws)
+    due = due_auto_publish_drafts(ws, date_from=date_from, date_to=date_to)
     published = 0
     errors: list[str] = []
     for d in due:
@@ -742,4 +823,6 @@ def run_auto_publish_for_workspace(ws: Workspace) -> dict[str, Any]:
         "checked": len(due),
         "errors": errors,
         "error": "",
+        "period_from": date_from.isoformat() if date_from else "",
+        "period_to": date_to.isoformat() if date_to else "",
     }

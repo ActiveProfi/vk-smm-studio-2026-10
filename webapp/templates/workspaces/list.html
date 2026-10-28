@@ -8,7 +8,9 @@
     <h1 class="h3 mb-1">Каналы</h1>
     <p class="text-muted mb-0">Нажмите на канал — откроется <strong>Контент-план</strong> с ИИ-помощником.</p>
   </div>
+  {% if can_create %}
   <a class="btn btn-outline-dark" href="{{ url_for('workspaces.create_workspace') }}">Новый канал</a>
+  {% endif %}
 </div>
 
 {% set selected = active_ws or (workspaces[0] if workspaces else none) %}

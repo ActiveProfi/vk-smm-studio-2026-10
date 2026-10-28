@@ -4,8 +4,8 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
   <div>
     <p class="lk-kicker mb-1">Кабинет агентства</p>
-    <h1 class="h3 mb-1">Согласование контент-плана</h1>
-    <p class="text-muted mb-0">Канал: <strong>{{ workspace.name }}</strong> · клиент согласует план целиком, не каждый пост</p>
+    <h1 class="h3 mb-1">Согласование и автопубликация</h1>
+    <p class="text-muted mb-0">Канал: <strong>{{ workspace.name }}</strong> · сначала согласование плана, затем публикация по графику</p>
   </div>
   <div class="d-flex flex-wrap gap-2">
     <a class="btn btn-accent" href="{{ url_for('workspaces.content_plan', workspace_id=workspace.id) }}">Собрать новый план</a>
@@ -13,17 +13,34 @@
   </div>
 </div>
 
-<div class="panel mb-3" style="border-color:#e8b84a!important;background:#fffef9">
-  <h2 class="h5 mb-2">Как это работает</h2>
+{# —— Шаг 1: настройки согласования —— #}
+<div class="panel mb-3">
+  <h2 class="h5 mb-2">Шаг 1. Согласование</h2>
   <ol class="mb-3 small">
     <li>В контент-плане нажмите «Отправить план клиенту».</li>
     <li>Скопируйте ссылку ниже и отправьте клиенту.</li>
     <li>Клиент одним решением согласует или вернёт на правки весь план.</li>
-    <li>После «Согласован» нажмите «В календарь».</li>
+    <li>После статуса «Согласован» нажмите «Внести в календарь».</li>
   </ol>
-  {% if require_client_approval %}
-  <div class="alert alert-warning py-2 small mb-3">В канале обязательно: без согласования плана клиентом в календарь не внести.</div>
-  {% endif %}
+
+  <form method="post" action="{{ url_for('smm.client_approvals_settings', workspace_id=workspace.id) }}" class="mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-check mb-2">
+      <input class="form-check-input" type="checkbox" name="require_client_approval" value="1" id="req-approve"
+        {% if require_client_approval %}checked{% endif %}>
+      <label class="form-check-label" for="req-approve">
+        Требовать согласование клиента перед внесением плана в календарь
+      </label>
+    </div>
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="auto_publish_enabled" value="1" id="auto-pub"
+        {% if auto_publish_enabled %}checked{% endif %}>
+      <label class="form-check-label" for="auto-pub">
+        Держать автопубликацию включённой (таймер сам публикует готовые посты по времени)
+      </label>
+    </div>
+    <button type="submit" class="btn btn-sm btn-outline-dark">Сохранить настройки</button>
+  </form>
 
   <label class="form-label fw-semibold">Ссылка для клиента</label>
   <div class="input-group mb-2">
@@ -37,6 +54,55 @@
     <button type="submit" class="btn btn-sm btn-outline-secondary">Обновить ссылку</button>
   </form>
   <span id="copy-status" class="small text-success ms-2"></span>
+</div>
+
+{# —— Шаг 2: автопубликация за период —— #}
+<div class="panel mb-3">
+  <h2 class="h5 mb-2">Шаг 2. Автопубликация за период</h2>
+  <p class="small text-muted mb-3">
+    Публикуются только посты со статусом <strong>готов</strong>, у которых наступило время в календаре
+    {% if require_client_approval %}и план согласован{% endif %}.
+    {% if auto_publish_info %}
+    Сейчас в очереди: можно опубликовать <strong>{{ auto_publish_info.due_now }}</strong>,
+    ждут времени — <strong>{{ auto_publish_info.waiting }}</strong>
+    {% if auto_publish_info.blocked %}, заблокированы — <strong>{{ auto_publish_info.blocked }}</strong>{% endif %}.
+    {% endif %}
+  </p>
+
+  <form method="post" action="{{ url_for('smm.auto_publish_now', workspace_id=workspace.id) }}" id="auto-period-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ url_for('smm.client_approvals', workspace_id=workspace.id) }}">
+
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label" for="period">Период</label>
+        <select class="form-select" name="period" id="period">
+          <option value="today" selected>Сегодня</option>
+          <option value="week">Эта неделя</option>
+          <option value="month">Этот месяц</option>
+          <option value="custom">Свой период</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-none" id="custom-from-wrap">
+        <label class="form-label" for="date_from">С даты</label>
+        <input type="date" class="form-control" name="date_from" id="date_from">
+      </div>
+      <div class="col-md-3 d-none" id="custom-to-wrap">
+        <label class="form-label" for="date_to">По дату</label>
+        <input type="date" class="form-control" name="date_to" id="date_to">
+      </div>
+      <div class="col-md-4">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="enable_auto" value="1" id="enable-auto" checked>
+          <label class="form-check-label small" for="enable-auto">
+            Оставить автопубликацию включённой после запуска
+          </label>
+        </div>
+        <button type="submit" class="btn btn-accent">Запустить автопубликацию</button>
+      </div>
+    </div>
+    <p class="form-text mb-0 mt-2">В выбранный период попадут посты по дате из календаря. Если время ещё не наступило — пост не уйдёт.</p>
+  </form>
 </div>
 
 <div class="row g-3 mb-3">
@@ -121,9 +187,20 @@
       setTimeout(() => { if (status) status.textContent = ""; }, 2000);
     } catch (e) {
       input.select();
-      document.execCommand("copy");
+      if (status) status.textContent = "Выделите и скопируйте вручную";
     }
   });
+
+  const period = document.getElementById("period");
+  const fromWrap = document.getElementById("custom-from-wrap");
+  const toWrap = document.getElementById("custom-to-wrap");
+  function syncPeriod() {
+    const custom = period?.value === "custom";
+    fromWrap?.classList.toggle("d-none", !custom);
+    toWrap?.classList.toggle("d-none", !custom);
+  }
+  period?.addEventListener("change", syncPeriod);
+  syncPeriod();
 })();
 </script>
 {% endblock %}

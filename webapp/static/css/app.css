@@ -6,20 +6,18 @@
   --accent-hover: #d4a63a;
   --cream: #f7f5f0;
   --panel: #ffffff;
-  --line: rgba(26, 35, 50, 0.12);
+  --line: rgba(26, 35, 50, 0.1);
   --muted: #5c6673;
   --ok: #2f6b4f;
   --danger: #a35b5b;
-  --warn-soft: #fff8e6;
+  --warn-soft: #faf6ec;
   --font: "Manrope", "Segoe UI", sans-serif;
-  --radius: 16px;
-  --shadow: 0 16px 40px rgba(26, 35, 50, 0.1);
+  --radius: 12px;
+  --shadow: 0 4px 16px rgba(26, 35, 50, 0.05);
 }
 
 body {
-  background:
-    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(232, 184, 74, 0.12), transparent 55%),
-    linear-gradient(165deg, #eef1f5 0%, #e8ecf2 50%, #e2e7ef 100%);
+  background: #eef0f3;
   color: var(--ink);
   min-height: 100vh;
   font-family: var(--font);
@@ -27,30 +25,26 @@ body {
 }
 
 body.app-shell {
-  background:
-    radial-gradient(ellipse 55% 30% at 0% 0%, rgba(232, 184, 74, 0.11), transparent 50%),
-    linear-gradient(180deg, #e9edf3 0%, #e4e9f0 55%, #e0e5ed 100%);
+  background: #eef0f3;
 }
 
 /* Публичный портал клиента — тот же шрифт и фон */
 body.portal-shell {
-  background:
-    radial-gradient(ellipse 60% 35% at 100% 0%, rgba(232, 184, 74, 0.12), transparent 55%),
-    linear-gradient(180deg, #e9edf3 0%, #e4e9f0 100%);
+  background: #eef0f3;
   font-family: var(--font);
 }
 
 .app-main {
-  padding-top: 1.75rem !important;
-  padding-bottom: 3rem !important;
+  padding-top: 1.5rem !important;
+  padding-bottom: 2.75rem !important;
 }
 
 .app-nav {
-  background: linear-gradient(145deg, var(--ink-deep) 0%, var(--ink) 55%, var(--ink-2) 100%) !important;
-  border-bottom: 2px solid var(--accent);
-  box-shadow: 0 12px 32px rgba(14, 20, 28, 0.35);
-  padding-top: 0.6rem;
-  padding-bottom: 0.6rem;
+  background: var(--ink) !important;
+  border-bottom: 1px solid rgba(232, 184, 74, 0.55);
+  box-shadow: 0 1px 0 rgba(14, 20, 28, 0.08);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
 }
 
 .app-brand-mark {
@@ -59,36 +53,36 @@ body.portal-shell {
   justify-content: center;
   background: var(--accent);
   color: var(--ink);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  border-radius: 6px;
-  padding: 0.15rem 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 4px;
+  padding: 0.12rem 0.3rem;
   margin-right: 0.2rem;
   vertical-align: 0.05em;
 }
 
 .navbar-brand {
-  letter-spacing: 0.04em;
-  font-weight: 800 !important;
+  letter-spacing: 0.02em;
+  font-weight: 700 !important;
   color: #fff !important;
 }
 
 .app-nav .nav-link {
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: rgba(244, 241, 234, 0.78) !important;
-  padding: 0.25rem 0.35rem !important;
-  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: rgba(244, 241, 234, 0.72) !important;
+  padding: 0.22rem 0.3rem !important;
+  border-radius: 6px;
 }
 
 .app-nav .nav-link:hover {
-  color: var(--accent) !important;
-  background: rgba(255, 255, 255, 0.05);
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .app-nav-channel {
-  color: rgba(244, 241, 234, 0.55) !important;
+  color: rgba(244, 241, 234, 0.5) !important;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -96,48 +90,48 @@ body.portal-shell {
 }
 
 .app-nav-channel strong {
-  color: #fff !important;
-  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92) !important;
+  font-weight: 600;
 }
 
 .app-nav-logout {
-  color: rgba(244, 241, 234, 0.55) !important;
+  color: rgba(244, 241, 234, 0.5) !important;
 }
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 1.25rem 1.4rem;
+  padding: 1.15rem 1.25rem;
   box-shadow: var(--shadow);
 }
 
 .panel--accent {
-  border-top: 3px solid var(--accent);
+  border-top: 2px solid rgba(232, 184, 74, 0.65);
 }
 
-/* Заголовки кабинета — как на лендинге */
+/* Заголовки кабинета */
 .app-main h1.h3,
 .app-main h1.h4,
 .app-main .h3,
 .portal-shell h1.h3 {
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   color: var(--ink);
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .app-main h2.h5,
 .app-main h2.h6,
 .app-main .h5,
 .app-main .h6 {
-  font-weight: 750;
+  font-weight: 650;
   letter-spacing: -0.01em;
 }
 
 h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
-  font-weight: 750;
-  letter-spacing: -0.015em;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .text-muted {
@@ -148,8 +142,8 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--ink);
-  font-weight: 700;
-  border-radius: 10px;
+  font-weight: 600;
+  border-radius: 8px;
 }
 
 .btn-accent:hover,
@@ -161,11 +155,11 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 
 .btn-outline-dark,
 .btn-outline-secondary {
-  border-width: 1.5px;
-  border-color: rgba(26, 35, 50, 0.28);
+  border-width: 1px;
+  border-color: rgba(26, 35, 50, 0.22);
   color: var(--ink);
-  font-weight: 600;
-  border-radius: 10px;
+  font-weight: 550;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -177,30 +171,30 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 }
 
 .btn-sm {
-  border-radius: 8px;
+  border-radius: 7px;
 }
 
 .form-control,
 .form-select {
-  border-radius: 10px;
-  border-color: rgba(26, 35, 50, 0.16);
+  border-radius: 8px;
+  border-color: rgba(26, 35, 50, 0.14);
   font-weight: 500;
 }
 
 .form-control:focus,
 .form-select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 0.2rem rgba(232, 184, 74, 0.25);
+  border-color: rgba(232, 184, 74, 0.85);
+  box-shadow: 0 0 0 0.15rem rgba(232, 184, 74, 0.15);
 }
 
 .app-alert,
 .alert {
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .app-alert {
-  border: none;
-  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  box-shadow: none;
 }
 
 .alert-light {
@@ -210,69 +204,70 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 
 .alert-warning {
   background: var(--warn-soft);
-  border-color: rgba(232, 184, 74, 0.45);
+  border-color: rgba(232, 184, 74, 0.35);
   color: var(--ink);
 }
 
-/* Панель: тёмные плитки статистики как на лендинге */
+/* Панель: плитки статистики */
 .manager-stat {
-  background: linear-gradient(145deg, var(--ink-deep) 0%, var(--ink) 100%);
+  background: var(--ink);
   color: var(--cream);
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 10px 24px rgba(14, 20, 28, 0.22) !important;
-  border-radius: 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
+  border-radius: 10px !important;
 }
 
 .manager-stat__value {
-  font-size: 1.45rem;
-  font-weight: 800;
-  line-height: 1.1;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.15;
   color: var(--accent);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 .manager-stat__label {
   font-size: 0.68rem;
-  color: rgba(244, 241, 234, 0.62);
+  color: rgba(244, 241, 234, 0.58);
   margin-top: 0.2rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.01em;
 }
 
 .manager-stat--warn {
-  border-color: rgba(232, 184, 74, 0.55) !important;
-  box-shadow: 0 0 0 1px rgba(232, 184, 74, 0.35), 0 10px 24px rgba(14, 20, 28, 0.22) !important;
+  border-color: rgba(232, 184, 74, 0.4) !important;
+  box-shadow: none !important;
 }
 
 .manager-stat--danger {
-  border-color: rgba(224, 122, 106, 0.65) !important;
+  border-color: rgba(224, 122, 106, 0.45) !important;
 }
 
 .manager-stat--danger .manager-stat__value {
-  color: #f0a8a0;
+  color: #e8b4ae;
 }
 
 .manager-channel-card {
-  border-left: 3px solid transparent;
+  border-left: 2px solid transparent;
   border-radius: var(--radius);
-  padding: 1.05rem 1.2rem;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  padding: 1rem 1.15rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .manager-channel-card.manager-channel--warn {
-  border-left-color: var(--accent);
-  background: #fffef8;
+  border-left-color: rgba(232, 184, 74, 0.75);
+  background: #fbfaf6;
 }
 
 .manager-channel-card.manager-channel--danger {
-  border-left-color: #e07a6a;
-  background: #fff8f7;
+  border-left-color: rgba(224, 122, 106, 0.7);
+  background: #fbf8f7;
 }
 
 .manager-channel--active {
-  box-shadow: 0 0 0 2px rgba(232, 184, 74, 0.65), var(--shadow);
-  background: #fffdf6;
-  border-color: rgba(232, 184, 74, 0.35);
+  box-shadow: none;
+  background: #faf9f6;
+  border-color: rgba(26, 35, 50, 0.12);
+  border-left-color: var(--accent);
 }
 
 .manager-chip {
@@ -281,14 +276,14 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
   align-items: center;
   padding: 0.4rem 0.2rem;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: linear-gradient(180deg, #fffef9 0%, #f7f5f0 100%);
+  border-radius: 8px;
+  background: #fafafa;
 }
 
 .manager-chip strong {
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   line-height: 1.1;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--ink);
 }
 
@@ -296,11 +291,11 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
   font-size: 0.6rem;
   color: var(--muted);
   text-align: center;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .manager-chip--warn {
-  border-color: rgba(232, 184, 74, 0.55);
+  border-color: rgba(232, 184, 74, 0.4);
   background: var(--warn-soft);
 }
 
@@ -314,16 +309,16 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 .manager-agency-line b,
 .manager-metrics-line b {
   color: var(--ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .stat-value {
-  font-size: 1.55rem;
-  font-weight: 800;
+  font-size: 1.45rem;
+  font-weight: 700;
   color: var(--ink);
   line-height: 1.2;
   margin-top: 0.15rem;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 .auth-wrap {
@@ -335,9 +330,7 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
   min-height: 100vh;
   padding: 2.5rem 1rem 3rem !important;
   max-width: none !important;
-  background:
-    radial-gradient(ellipse 60% 50% at 85% 0%, rgba(232, 184, 74, 0.2), transparent 55%),
-    linear-gradient(160deg, #0e141c 0%, #1a2332 45%, #243447 100%);
+  background: linear-gradient(180deg, #121820 0%, #1a2332 100%);
   color: #f4f1ea;
 }
 
@@ -345,7 +338,7 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
   background: #fff;
   color: var(--ink);
   border: none;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
 }
 
 .auth-page .auth-brand {
@@ -357,10 +350,10 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   color: #fff;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   text-decoration: none;
   margin-bottom: 0.85rem;
 }
@@ -368,13 +361,14 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 .auth-page .auth-brand__mark span {
   background: var(--accent);
   color: var(--ink);
-  font-size: 0.72rem;
-  padding: 0.15rem 0.35rem;
-  border-radius: 6px;
+  font-size: 0.7rem;
+  padding: 0.12rem 0.3rem;
+  border-radius: 4px;
+  font-weight: 700;
 }
 
 .auth-page .auth-brand__lead {
-  color: rgba(244, 241, 234, 0.7);
+  color: rgba(244, 241, 234, 0.65);
   font-size: 0.95rem;
   max-width: 28rem;
   margin: 0 auto;
@@ -393,8 +387,8 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 }
 
 .progress {
-  background: rgba(26, 35, 50, 0.08);
-  border-radius: 999px;
+  background: rgba(26, 35, 50, 0.07);
+  border-radius: 6px;
 }
 
 .progress-bar.bg-success {
@@ -411,13 +405,13 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 
 .table thead th {
   font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-weight: 600;
   color: var(--muted);
   border-bottom-width: 1px;
-  padding-top: 0.65rem;
-  padding-bottom: 0.65rem;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
 }
 
 .table > :not(caption) > * > * {
@@ -425,14 +419,14 @@ h1, h2, h3, .h1, .h2, .h3, .h4, .h5, .h6 {
 }
 
 .table-warning {
-  --bs-table-bg: #fff8e6;
-  --bs-table-accent-bg: #fff8e6;
+  --bs-table-bg: #faf6ec;
+  --bs-table-accent-bg: #faf6ec;
 }
 
 .badge.text-bg-warning {
   background-color: var(--accent) !important;
   color: var(--ink) !important;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .badge.text-bg-success {
@@ -468,12 +462,12 @@ code {
 }
 
 .dev-skip-banner {
-  background: var(--accent);
+  background: rgba(232, 184, 74, 0.85);
   color: var(--ink);
   text-align: center;
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
 }
 
 
@@ -513,11 +507,9 @@ code {
 }
 
 .landing-hero {
-  background:
-    radial-gradient(ellipse 60% 55% at 85% 0%, rgba(232, 184, 74, 0.2), transparent 55%),
-    linear-gradient(160deg, #121820 0%, #1a2332 45%, #243447 100%);
+  background: linear-gradient(180deg, #121820 0%, #1a2332 55%, #1f2a3a 100%);
   color: #f4f1ea;
-  padding: 3.5rem 0 3.75rem;
+  padding: 3.25rem 0 3.5rem;
 }
 
 .landing-hero__top {
@@ -1761,12 +1753,12 @@ code {
 
 .progress-card {
   background: #fff;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid var(--line);
-  padding: 1.75rem 1.5rem;
-  width: min(440px, 100%);
+  padding: 1.5rem 1.35rem;
+  width: min(420px, 100%);
   text-align: center;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
 }
 
 .progress-card .progress-bar {
@@ -1805,12 +1797,12 @@ code {
 .datetime-cell {
   width: 3.1rem;
   text-align: center;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  padding: 0.45rem 0.25rem;
-  border: 2px solid var(--line);
+  padding: 0.4rem 0.25rem;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fffef9;
+  background: #fff;
 }
 
 .datetime-cell--year {
@@ -1818,27 +1810,27 @@ code {
 }
 
 .datetime-cell:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 0.2rem rgba(232, 184, 74, 0.25);
+  border-color: rgba(232, 184, 74, 0.85);
+  box-shadow: 0 0 0 0.15rem rgba(232, 184, 74, 0.15);
   background: #fff;
 }
 
 .datetime-sep {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--ink);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--muted);
   padding-bottom: 1.35rem;
   user-select: none;
 }
 
 .channel-active-bar {
-  border: 2px solid var(--accent);
-  background: linear-gradient(135deg, #fffef9 0%, #fff 100%);
+  border: 1px solid rgba(232, 184, 74, 0.55);
+  background: #faf9f6;
 }
 
 .channel-card--active {
-  border: 2px solid var(--accent);
-  box-shadow: 0 8px 28px rgba(232, 184, 74, 0.18);
+  border: 1px solid rgba(232, 184, 74, 0.55);
+  box-shadow: none;
 }
 
 /* Выбор канала на странице «Каналы» */
@@ -1848,9 +1840,9 @@ code {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  padding: 1rem 1.2rem;
+  padding: 0.95rem 1.15rem;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--accent);
+  border-top: 2px solid rgba(232, 184, 74, 0.65);
   border-radius: var(--radius);
   background: #fff;
   box-shadow: var(--shadow);
@@ -1864,19 +1856,19 @@ code {
 
 .channel-pick {
   cursor: pointer;
-  border: 2px solid var(--line);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  border: 1px solid var(--line);
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .channel-pick:hover {
-  border-color: rgba(232, 184, 74, 0.55);
-  box-shadow: 0 8px 24px rgba(26, 35, 50, 0.08);
+  border-color: rgba(232, 184, 74, 0.45);
+  box-shadow: none;
 }
 
 .channel-pick--selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(232, 184, 74, 0.35), var(--shadow);
-  background: #fffdf6;
+  border-color: rgba(232, 184, 74, 0.75);
+  box-shadow: none;
+  background: #faf9f6;
 }
 
 .channel-pick:focus {
@@ -1891,9 +1883,9 @@ code {
   align-items: center;
   justify-content: center;
   min-width: 4.5rem;
-  padding: 0.7rem 0.9rem;
-  border: 2px solid var(--line);
-  border-radius: 12px;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   background: #fff;
   cursor: pointer;
   user-select: none;
@@ -1901,28 +1893,28 @@ code {
 }
 
 .plan-day-card:hover {
-  border-color: rgba(232, 184, 74, 0.55);
+  border-color: rgba(232, 184, 74, 0.45);
 }
 
 .plan-day-card--active {
-  border-color: var(--accent);
-  background: #fff8e6;
-  box-shadow: 0 4px 14px rgba(232, 184, 74, 0.2);
+  border-color: rgba(232, 184, 74, 0.75);
+  background: #faf6ec;
+  box-shadow: none;
 }
 
 .plan-day-card__num {
-  font-size: 1.45rem;
-  font-weight: 800;
+  font-size: 1.35rem;
+  font-weight: 700;
   line-height: 1.1;
   color: var(--ink);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
 .plan-day-card__label {
   font-size: 0.75rem;
   color: #6c757d;
   text-transform: lowercase;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .channel-toolbar__name-link {
@@ -1936,48 +1928,47 @@ code {
 }
 
 
-/* Панель ЛК — в стиле макета с лендинга */
+/* Панель ЛК */
 .lk-kicker {
   font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #9a7a2e;
+  color: #8a7340;
   margin: 0;
 }
 
 .lk-board {
-  background: linear-gradient(145deg, var(--ink-deep) 0%, var(--ink) 55%, var(--ink-2) 100%);
+  background: var(--ink);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 24px 56px rgba(14, 20, 28, 0.28);
+  box-shadow: var(--shadow);
 }
 
 .lk-board__bar {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.65rem 1.1rem;
-  background: #0a0f16;
-  font-size: 0.8rem;
-  color: rgba(244, 241, 234, 0.85);
+  gap: 0.35rem;
+  padding: 0.55rem 1rem;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.78rem;
+  color: rgba(244, 241, 234, 0.8);
 }
 
 .lk-board__bar span {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #5c6673;
+  opacity: 0.85;
 }
 
-.lk-board__bar span:nth-child(1) { background: #e07a6a; }
+.lk-board__bar span:nth-child(1) { background: #c98a82; }
 .lk-board__bar span:nth-child(2) { background: var(--accent); }
-.lk-board__bar span:nth-child(3) { background: #6bbb7a; }
+.lk-board__bar span:nth-child(3) { background: #7aaf86; }
 
 .lk-board__bar strong {
-  margin-left: 0.45rem;
+  margin-left: 0.4rem;
   font-weight: 600;
 }
 
@@ -2009,38 +2000,38 @@ code {
 .manager-layout { align-items: flex-start; }
 .manager-sidebar { position: sticky; top: 1rem; }
 
-/* Карточки пакетов — в стиле лендинга */
+/* Карточки пакетов */
 .package-card {
-  border: 2px solid var(--line) !important;
-  border-radius: 14px !important;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px !important;
+  transition: border-color 0.15s ease, background 0.15s ease;
   font-family: var(--font);
 }
 
 .package-card:hover {
-  border-color: rgba(232, 184, 74, 0.55) !important;
+  border-color: rgba(232, 184, 74, 0.45) !important;
 }
 
 .package-card.border-warning {
-  border-color: var(--accent) !important;
-  background: #fffdf6 !important;
+  border-color: rgba(232, 184, 74, 0.65) !important;
+  background: #faf9f6 !important;
 }
 
 #package-status-box {
-  border-radius: 14px;
+  border-radius: 12px;
   background: #fff;
   box-shadow: var(--shadow);
 }
 
 /* Оплата (тестовая заглушка) */
 .billing-stub-banner {
-  border-radius: 12px;
-  border: 1px solid rgba(184, 134, 11, 0.35);
-  background: #fff8e8;
+  border-radius: 10px;
+  border: 1px solid rgba(184, 134, 11, 0.28);
+  background: #faf6ec;
   color: #3a3428;
 }
 .billing-preview__total {
-  font-size: 1.35rem;
+  font-size: 1.3rem;
   color: var(--ink, #12151c);
 }
 .billing-form .form-label {
