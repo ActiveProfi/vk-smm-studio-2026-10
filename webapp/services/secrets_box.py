@@ -22,8 +22,11 @@ def _fernet() -> Fernet:
         (os.environ.get("APP_ENCRYPTION_KEY") or "").strip()
         or (os.environ.get("FLASK_SECRET_KEY") or "").strip()
         or (os.environ.get("SECRET_KEY") or "").strip()
-        or "change-me-in-production-nds04ka-vk"
     )
+    if not raw:
+        from webapp.config import Config
+
+        raw = Config.SECRET_KEY
     digest = hashlib.sha256(raw.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
