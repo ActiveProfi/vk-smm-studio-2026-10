@@ -345,7 +345,7 @@
         {% endif %}
       </div>
       <p class="small text-muted mb-3">
-        Привяжите рекламный кабинет <a href="https://ads.vk.com/" target="_blank" rel="noopener">ads.vk.com</a>
+        Привяжите рекламный кабинет <a href="https://ads.vk.ru/" target="_blank" rel="noopener">ads.vk.ru</a>
         к этому каналу через мастер:
         <a href="{{ url_for('smm.ads_connect', workspace_id=workspace.id) if workspace else url_for('smm.ads_connect') }}">Подключить ВК Ads</a>.
         Список всех кабинетов — в меню <strong>Реклама</strong>. Рекомендуется тариф <strong>Pro</strong>.
@@ -362,7 +362,7 @@
           {% if workspace and workspace.vk_ads_token %}
             Токен уже сохранён. Введите новый, только если хотите заменить.
           {% else %}
-            Access token из ads.vk.com → Настройки → Доступ к API.
+            Access token из ads.vk.ru → Настройки → Доступ к API.
             Можно временно положить в <code>.env</code> как <code>VK_ADS_TOKEN</code>.
           {% endif %}
         </div>

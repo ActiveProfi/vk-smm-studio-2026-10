@@ -60,7 +60,7 @@ def cabinet_row(ws: Workspace) -> dict:
         "status_label": status_label,
         "last_error": (ws.vk_ads_last_error or "").strip(),
         "connected_at": (ws.vk_ads_connected_at or "").strip(),
-        "cabinet_url": "https://ads.vk.com/",
+        "cabinet_url": vk_ads_client.cabinet_url(),
     }
 
 
@@ -83,7 +83,7 @@ def connect_workspace(
     client_secret = (client_secret or "").strip()
     account_id = (account_id or "").strip()
     if not client_id or not client_secret:
-        raise ValueError("Укажите Client ID и Client Secret из ads.vk.com → Доступ к API.")
+        raise ValueError("Укажите Client ID и Client Secret из ads.vk.ru → Доступ к API.")
 
     tokens = vk_ads_client.obtain_tokens_raw(client_id, client_secret)
     from webapp.services.secrets_box import seal

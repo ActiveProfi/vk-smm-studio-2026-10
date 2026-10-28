@@ -17,7 +17,7 @@
     <div class="panel h-100" style="background:#f7f5f0">
       <h2 class="h6 mb-2">Где взять данные</h2>
       <ol class="small mb-0 ps-3">
-        <li class="mb-2">Откройте <a href="https://ads.vk.com/" target="_blank" rel="noopener">ads.vk.com</a> и войдите в нужный кабинет (свой или клиента).</li>
+        <li class="mb-2">Откройте <a href="https://ads.vk.ru/" target="_blank" rel="noopener">ads.vk.ru</a> и войдите в нужный кабинет (свой или клиента).</li>
         <li class="mb-2">Меню слева → <strong>Настройки</strong> → вкладка <strong>«Доступ к API»</strong>.</li>
         <li class="mb-2">Если доступа ещё нет — нажмите «Запросить доступ», укажите ответственное лицо.</li>
         <li class="mb-2">Скопируйте <strong>client_id</strong>. <strong>client_secret</strong> показывают коротко при выдаче — сохраните сразу.</li>
@@ -60,7 +60,7 @@
           <input class="form-control" type="text" name="client_id" id="client_id"
                  value="{{ selected_ws.vk_ads_client_id if selected_ws else '' }}"
                  {% if not (selected_ws and selected_ws.vk_ads_client_id) %}required{% endif %}
-                 placeholder="Из ads.vk.com → Доступ к API" autocomplete="off">
+                 placeholder="Из ads.vk.ru → Доступ к API" autocomplete="off">
         </div>
         <div class="mb-3">
           <label class="form-label" for="client_secret">Client Secret</label>

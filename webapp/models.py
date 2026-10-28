@@ -108,7 +108,7 @@ class Workspace(db.Model):
     auto_publish_enabled = db.Column(db.Boolean, default=False)
     vk_token = db.Column(db.Text, default="")
     vk_group_id = db.Column(db.String(64), default="")
-    # VK Реклама (ads.vk.com): токен API + подпись кабинета для менеджера
+    # VK Реклама (ads.vk.ru): токен API + подпись кабинета для менеджера
     vk_ads_token = db.Column(db.Text, default="")
     vk_ads_account_id = db.Column(db.String(64), default="")
     vk_ads_client_id = db.Column(db.String(128), default="")

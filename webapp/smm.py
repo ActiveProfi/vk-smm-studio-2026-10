@@ -1979,7 +1979,7 @@ def ads():
 @smm_bp.route("/ads/cabinets")
 @login_required
 def ads_cabinets():
-    """Список рекламных кабинетов: канал → статус → вход в ads.vk.com."""
+    """Список рекламных кабинетов: канал → статус → вход в ads.vk.ru."""
     from webapp.services import ads_portfolio as ads_pf
 
     plan_ok = ads_pf.plan_includes_ads(current_user)

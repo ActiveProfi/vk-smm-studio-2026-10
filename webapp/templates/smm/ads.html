@@ -34,7 +34,7 @@
 <p class="text-muted small mb-4">
   Подключите кабинет в мастере:
   <a href="{{ url_for('smm.ads_connect', workspace_id=workspace.id if workspace else None) }}">Подключить ВК Ads</a>
-  — подсказка, какие данные взять в ads.vk.com.
+  — подсказка, какие данные взять в ads.vk.ru.
 </p>
 {% elif data %}
 
@@ -83,7 +83,7 @@
 <div class="panel mb-3">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
     <h2 class="h6 mb-0">Кампании</h2>
-    <a class="small" href="{{ data.cabinet_url }}" target="_blank" rel="noopener">Открыть ads.vk.com</a>
+    <a class="small" href="{{ data.cabinet_url }}" target="_blank" rel="noopener">Открыть ads.vk.ru</a>
   </div>
   {% if data.campaigns %}
   <div class="table-responsive">
