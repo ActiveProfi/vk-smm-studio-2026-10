@@ -190,6 +190,10 @@ class Draft(db.Model):
     video_url = db.Column(db.String(1000), default="")
     publish_with_image = db.Column(db.Boolean, default=True)
     publish_with_video = db.Column(db.Boolean, default=False)
+    # text | image | carousel | clip | animation
+    publish_format = db.Column(db.String(32), default="image")
+    # дополнительные картинки карусели (JSON-список URL)
+    carousel_urls_json = db.Column(db.Text, default="[]")
     search_notes = db.Column(db.Text, default="")
     relevance_report = db.Column(db.Text, default="")
     generation_warning = db.Column(db.Text, default="")  # почему не получился визуал

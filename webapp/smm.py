@@ -1502,6 +1502,167 @@ def preview_visual_full(draft_id: int, kind: str):
     )
 
 
+@smm_bp.route("/preview/<int:draft_id>/format", methods=["POST"])
+@login_required
+def preview_set_format(draft_id: int):
+    """Сменить формат уже созданного поста. Текст не трогаем."""
+    from webapp.services.publish_formats import apply_to_draft, label, normalize_format
+
+    draft = _user_draft(draft_id)
+    denied = acc.guard("content", draft.workspace)
+    if denied:
+        return denied
+    kept = draft.post_text or ""
+    code = apply_to_draft(draft, request.form.get("publish_format") or request.args.get("publish_format"))
+    draft.post_text = kept
+    db.session.commit()
+    flash(f"Формат: {label(code)}. Текст поста на месте.", "success")
+    return redirect(url_for("smm.preview", draft_id=draft.id))
+
+
+@smm_bp.route("/preview/<int:draft_id>/animation/start", methods=["POST"])
+@login_required
+def preview_animation_start(draft_id: int):
+    """Короткое видео Veo 3.1: из картинки поста или из текста. Текст не переписываем."""
+    draft = _user_draft(draft_id)
+    denied = acc.guard("generate", draft.workspace)
+    if denied:
+        return denied
+    if not (draft.post_text or "").strip():
+        return jsonify({"ok": False, "error": "Сначала нужен текст поста. Формат можно сменить, текст не пропадёт."}), 400
+
+    from webapp.services import business as biz
+    from webapp.services.publish_formats import apply_to_draft
+
+    ws = draft.workspace
+    try:
+        if ws:
+            biz.assert_can_use_video(ws)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    kept_text = draft.post_text or ""
+    apply_to_draft(draft, "animation")
+    draft.post_text = kept_text
+    has_image = bool((draft.image_url or "").strip())
+    workspace = draft.workspace
+    brand_footer = (workspace.brand_site if workspace else "") or ""
+    visual_ctx = _workspace_visual_payload(workspace, current_user.id) if workspace else {}
+    payload = {
+        "kind": "animation",
+        "user_id": current_user.id,
+        "workspace_id": workspace.id if workspace else draft.workspace_id,
+        "draft_id": int(draft.id),
+        "generate_image": not has_image,
+        "generate_video": True,
+        "video_provider": "veo",
+        "video_brief": {},
+        "preserve_image": has_image,
+        **visual_ctx,
+    }
+    job_id = job_store.create_job(current_user.id, payload)
+    app = current_app._get_current_object()
+    draft.generation_warning = ""
+    db.session.commit()
+    post_text_copy = kept_text
+    topic_copy = draft.topic or ""
+    agent_answer_copy = draft.agent_answer or ""
+    draft_id_copy = int(draft.id)
+    image_exists = has_image
+
+    def _worker():
+        with app.app_context():
+            progress = job_store.make_progress_callback(job_id)
+            try:
+                progress("visual_prepare", "Готовим видео-анимацию (Veo 3.1)…")
+                pipeline = run_visual_for_draft(
+                    post_text=post_text_copy,
+                    topic=topic_copy,
+                    agent_answer=agent_answer_copy,
+                    generate_image=not image_exists,
+                    generate_video=True,
+                    video_provider="veo",
+                    video_brief={},
+                    brand_site=brand_footer,
+                    visual_style_prompt=payload.get("visual_style_prompt") or "",
+                    reference_image_urls=payload.get("reference_image_urls") or [],
+                    reference_image_names=payload.get("reference_image_names") or [],
+                    reference_local_files=payload.get("reference_local_files") or [],
+                    on_progress=progress,
+                )
+                d = db.session.get(Draft, draft_id_copy)
+                if not d:
+                    job_store.update_job(
+                        job_id, status="error", step="error", message="Черновик не найден", percent=100, error="Черновик не найден"
+                    )
+                    return
+                if pipeline.get("agent_answer"):
+                    d.agent_answer = pipeline["agent_answer"]
+                # Картинку-основу не стираем: из неё собрано видео.
+                dv.apply_pipeline_urls(
+                    d,
+                    pipeline,
+                    generate_image=not image_exists,
+                    generate_video=True,
+                    preserve_image=True,
+                )
+                if image_exists and not pipeline.get("image_url"):
+                    pass
+                apply_to_draft(d, "animation")
+                d.post_text = post_text_copy
+                warning = (pipeline.get("warning") or pipeline.get("error") or "").strip()
+                has_video = bool(pipeline.get("video_url"))
+                d.generation_warning = "" if has_video else (warning or "Видео-анимация не получилась.")
+                if d.post_text and has_video:
+                    d.status = "ready"
+                db.session.commit()
+                if has_video:
+                    biz.safe_log_api_usage(
+                        user_id=payload["user_id"],
+                        workspace_id=payload.get("workspace_id"),
+                        kind="animation",
+                        note=f"анимация #{d.id} veo3",
+                    )
+                    if pipeline.get("image_url") and not image_exists:
+                        biz.safe_log_api_usage(
+                            user_id=payload["user_id"],
+                            workspace_id=payload.get("workspace_id"),
+                            kind="image",
+                            note=f"кадр для анимации #{d.id}",
+                        )
+                if not has_video:
+                    job_store.update_job(
+                        job_id,
+                        status="error",
+                        step="error",
+                        message="Видео-анимация не получилась",
+                        percent=100,
+                        error=d.generation_warning or "Проверьте ключ KIE_API_KEY в .env.",
+                    )
+                    return
+                job_store.update_job(
+                    job_id,
+                    status="done",
+                    step="done",
+                    message="Видео-анимация готова",
+                    percent=100,
+                    draft_id=d.id,
+                    warning=warning,
+                )
+            except Exception as exc:  # noqa: BLE001
+                job_store.update_job(
+                    job_id,
+                    status="error",
+                    step="error",
+                    message="Ошибка видео-анимации",
+                    percent=100,
+                    error=scrub_secrets(str(exc)) or "Не удалось создать видео. Проверьте KIE_API_KEY.",
+                )
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"ok": True, "job_id": job_id})
+
+
 @smm_bp.route("/preview/<int:draft_id>", methods=["GET", "POST"])
 @login_required
 def preview(draft_id: int):
@@ -1543,23 +1704,43 @@ def preview(draft_id: int):
             if not ok_plan:
                 flash(plan_err, "warning")
                 return redirect(url_for("smm.preview", draft_id=draft.id))
+        from webapp.services.publish_formats import carousel_urls, normalize_format
+
+        fmt = normalize_format(getattr(draft, "publish_format", "") or "image")
         pub_image = request.form.get("publish_with_image") == "1"
         pub_video = request.form.get("publish_with_video") == "1"
-        dv.set_publish_flags(
-            draft,
-            publish_with_image=pub_image,
-            publish_with_video=pub_video,
-        )
+        if fmt != "text":
+            dv.set_publish_flags(
+                draft,
+                publish_with_image=pub_image,
+                publish_with_video=pub_video,
+            )
         image_url, video_url = dv.resolve_publish_media(draft)
-        if not image_url and not video_url:
+        extras = carousel_urls(draft) if fmt == "carousel" else []
+        if fmt == "text":
+            image_url, video_url, extras = "", "", []
+        elif fmt in {"clip", "animation"} and not video_url:
             db.session.commit()
-            flash("Отметьте картинку или видео для публикации.", "warning")
+            flash(
+                "Для этого формата нужно видео. Нажмите «Сгенерировать видео-анимацию» "
+                "или «Сгенерировать визуал» — текст поста останется.",
+                "warning",
+            )
+            return redirect(url_for("smm.preview", draft_id=draft.id))
+        elif fmt == "carousel" and not image_url and not extras:
+            db.session.commit()
+            flash("Для карусели нужна хотя бы одна картинка. Текст поста сохранён.", "warning")
+            return redirect(url_for("smm.preview", draft_id=draft.id))
+        elif fmt == "image" and not image_url:
+            db.session.commit()
+            flash("Для формата «Текст + картинка» сначала создайте картинку. Текст сохранён.", "warning")
             return redirect(url_for("smm.preview", draft_id=draft.id))
         try:
             resp = vk_client.publish_draft(
                 post_text=draft.post_text,
                 image_url=image_url,
                 video_url=video_url,
+                extra_image_urls=extras,
                 topic=draft.topic,
                 user_token=token,
                 user_group_id=group_id,
@@ -1600,6 +1781,12 @@ def preview(draft_id: int):
 
     pub_image, pub_video = dv.get_publish_flags(draft)
     from webapp.services import business as biz
+    from webapp.services.publish_formats import (
+        carousel_urls as pf_carousel,
+        choices as pf_choices,
+        label as pf_label,
+        normalize_format as pf_code,
+    )
 
     client_url = ""
     plan_status = ""
@@ -1628,6 +1815,12 @@ def preview(draft_id: int):
         video_camera_choices=video_skill.CAMERA_CHOICES,
         video_light_choices=video_skill.LIGHT_CHOICES,
         video_style_choices=video_skill.STYLE_CHOICES,
+        publish_formats=pf_choices(),
+        publish_format=pf_code(getattr(draft, "publish_format", "") or "image"),
+        publish_format_label=pf_label(getattr(draft, "publish_format", "") or "image"),
+        animation_cost=biz.resolve_unit_cost("animation"),
+        video_allowed=biz.package_allows_video(ws) if ws else True,
+        carousel_count=len(pf_carousel(draft)),
     )
 
 

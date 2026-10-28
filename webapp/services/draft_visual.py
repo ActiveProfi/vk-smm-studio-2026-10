@@ -21,6 +21,18 @@ def default_publish_flags(draft: Draft) -> tuple[bool, bool]:
 
 
 def get_publish_flags(draft: Draft) -> tuple[bool, bool]:
+    fmt = (getattr(draft, "publish_format", None) or "").strip()
+    if fmt:
+        from webapp.services.publish_formats import media_flags, normalize_format
+
+        code = normalize_format(fmt)
+        if code == "text":
+            return False, False
+        want_image, want_video = media_flags(code)
+        has_image = bool((draft.image_url or "").strip())
+        has_video = bool((draft.video_url or "").strip())
+        return want_image and has_image, want_video and has_video
+
     has_image = bool((draft.image_url or "").strip())
     has_video = bool((draft.video_url or "").strip())
     if not has_image and not has_video:
@@ -61,12 +73,15 @@ def apply_pipeline_urls(
     *,
     generate_image: bool,
     generate_video: bool,
+    preserve_image: bool = False,
 ) -> None:
     """Записать URL из pipeline с учётом выбранного типа визуала."""
     if generate_image and pipeline.get("image_url"):
         draft.image_url = pipeline["image_url"]
     if generate_video and pipeline.get("video_url"):
         draft.video_url = pipeline["video_url"]
+    if preserve_image:
+        return
     apply_generation_flags(draft, generate_image=generate_image, generate_video=generate_video)
 
 

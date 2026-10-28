@@ -27,6 +27,26 @@
   </div>
   <div class="col-lg-5">
     <div class="panel media-preview" id="visual">
+      <h2 class="h6 text-muted">Формат публикации</h2>
+      <form method="post" action="{{ url_for('smm.preview_set_format', draft_id=draft.id) }}" class="mb-3">
+        {{ publish_form.hidden_tag() }}
+        <label class="form-label small mb-1" for="publish-format">Можно сменить и после генерации текста</label>
+        <select class="form-select form-select-sm" id="publish-format" name="publish_format" onchange="this.form.submit()">
+          {% for opt in publish_formats %}
+          <option value="{{ opt.code }}" {% if opt.code == publish_format %}selected{% endif %}>{{ opt.label }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Текст поста при смене формата не стирается. В ВК уйдёт то, что нужно этому формату.</div>
+      </form>
+      {% if publish_format == 'animation' %}
+      <div class="alert alert-light border small py-2">
+        Видео-анимация — короткий ролик Veo 3.1
+        {% if draft.image_url %}из картинки поста{% else %}по тексту поста{% endif %}.
+        Оценка стоимости: <strong>{{ "%.0f"|format(animation_cost) }} ₽</strong>.
+        {% if not video_allowed %}На этом пакете канала ролик не запустится — нужен Премиум.{% endif %}
+      </div>
+      <button type="button" class="btn btn-accent w-100 mb-2" id="btn-animation">Сгенерировать видео-анимацию</button>
+      {% endif %}
       <h2 class="h6 text-muted">Визуал</h2>
       <p class="small text-muted mb-2" id="visual-checkboxes-hint">
         {% if draft.image_url or draft.video_url %}
@@ -470,6 +490,42 @@
       negative: document.getElementById("vb-negative")?.value || "",
     };
   }
+
+  document.getElementById("btn-animation")?.addEventListener("click", async () => {
+    overlay?.classList.remove("d-none");
+    progressWarning?.classList.add("d-none");
+    progressError?.classList.add("d-none");
+    progressClose?.classList.add("d-none");
+    progressApprove?.classList.add("d-none");
+    progressSpinner?.classList.remove("d-none");
+    progressTitle.textContent = "Идёт видео-анимация…";
+    progressMessage.textContent = "Veo 3.1, это может занять несколько минут";
+    progressBar.style.width = "3%";
+    progressBar.classList.add("progress-bar-animated", "bg-warning");
+    progressBar.classList.remove("bg-danger");
+    const btn = document.getElementById("btn-animation");
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch("{{ url_for('smm.preview_animation_start', draft_id=draft.id) }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: "{}",
+      });
+      const data = await res.json();
+      if (!data.ok || !data.job_id) {
+        showError(data.error || "Не удалось запустить видео-анимацию");
+        return;
+      }
+      currentJobId = data.job_id;
+      pollJob(data.job_id);
+    } catch (err) {
+      showError(String(err));
+    }
+  });
 
   btnVisual?.addEventListener("click", async () => {
     let generate_image = !!document.getElementById("vis-image")?.checked;

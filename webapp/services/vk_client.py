@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from urllib import parse, request
@@ -229,32 +230,50 @@ def _vk_call_with_token(method: str, params: dict, token: str) -> dict:
     return data["response"]
 
 
+def _read_local_media(url: str) -> tuple[bytes, str]:
+    """Файл из /media/<id>/<путь> в папке загрузок кабинета."""
+    import mimetypes
+    from pathlib import Path
+
+    from flask import current_app
+
+    match = re.match(r"^/media/(\d+)/(.+)$", (url or "").strip())
+    if not match:
+        raise RuntimeError("Не удалось найти файл картинки на сервере.")
+    root = (Path(current_app.config["UPLOAD_FOLDER"]) / match.group(1)).resolve()
+    full = (root / match.group(2)).resolve()
+    if root != full and root not in full.parents:
+        raise RuntimeError("Некорректный путь файла.")
+    if not full.is_file():
+        raise RuntimeError("Файл картинки не найден. Загрузите его ещё раз.")
+    ctype = mimetypes.guess_type(full.name)[0] or "image/jpeg"
+    return full.read_bytes(), ctype
+
+
 def publish_draft(
     *,
     post_text: str,
     image_url: str = "",
     video_url: str = "",
+    extra_image_urls: list[str] | None = None,
     topic: str = "",
     user_token: str = "",
     user_group_id: str = "",
 ) -> dict:
-    """Публикует пост с визуалом в сообщество."""
+    """Публикует пост в сообщество: текст, картинки (в том числе карусель) или видео."""
     token, group_id = _env_token_and_group(user_token, user_group_id)
     vk_message = prepare_post_text_for_vk(post_text)
+    images: list[str] = []
+    for raw in [image_url, *(extra_image_urls or [])]:
+        url = (raw or "").strip()
+        if url and url not in images:
+            images.append(url)
+    video = (video_url or "").strip()
 
-    # Временно подставляем токен пользователя в окружение для функций upload_*
     prev_user = os.environ.get("VK_USER_TOKEN")
     os.environ["VK_USER_TOKEN"] = token
     try:
-        draft = {
-            "post_text": vk_message,
-            "image_url": image_url or "",
-            "video_url": video_url or "",
-            "topic": topic or "",
-            "output_files": {},
-        }
-        if not (image_url or video_url):
-            # Текст без визуала — только если очень нужно для теста; правило проекта — с визуалом
+        if not images and not video:
             owner_id = f"-{group_id}"
             return _vk_call_with_token(
                 "wall.post",
@@ -265,8 +284,39 @@ def publish_draft(
                 },
                 token,
             )
-        attachments = vk_pub.build_attachments_for_draft(draft, group_id)
-        return vk_pub.publish_wall_post(group_id, vk_message, attachments)
+
+        parts: list[str] = []
+        http_images = [url for url in images if url.startswith("http://") or url.startswith("https://")]
+        local_images = [url for url in images if url.startswith("/media/")]
+        if http_images or (video and video.startswith("http")):
+            draft = {
+                "post_text": vk_message,
+                "image_url": http_images[0] if http_images else "",
+                "video_url": video if video.startswith("http") else "",
+                "topic": topic or "",
+                "output_files": {"carousel_image_urls": http_images[1:]},
+            }
+            if draft["image_url"] or draft["video_url"]:
+                parts.extend(
+                    part
+                    for part in vk_pub.build_attachments_for_draft(draft, group_id).split(",")
+                    if part
+                )
+        elif video and not video.startswith("http") and not video.startswith("/media/"):
+            raise RuntimeError(
+                "Ссылка на видео должна начинаться с http. Сгенерируйте ролик ещё раз."
+            )
+        for local in local_images:
+            content, ctype = _read_local_media(local)
+            parts.append(vk_pub.upload_photo_bytes(content, ctype, group_id))
+        if video.startswith("/media/"):
+            raise RuntimeError(
+                "Локальное видео ВК принимает только по ссылке http. "
+                "Сгенерируйте видео-анимацию или клип — ссылка появится сама."
+            )
+        if not parts:
+            raise RuntimeError("Не удалось собрать вложения для поста ВК.")
+        return vk_pub.publish_wall_post(group_id, vk_message, ",".join(parts))
     finally:
         if prev_user is None:
             os.environ.pop("VK_USER_TOKEN", None)

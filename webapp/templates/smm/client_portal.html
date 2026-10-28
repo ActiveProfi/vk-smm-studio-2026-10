@@ -58,7 +58,7 @@
               <td class="small">{{ format_publish_at(it.scheduled_for) if it.scheduled_for else '—' }}</td>
               <td class="small">{{ it.rubric_title or it.rubric_code or '—' }}</td>
               <td>{{ it.topic }}</td>
-              <td class="small">{{ it.format or '—' }}</td>
+              <td class="small">{{ it.format | publish_format_label }}</td>
             </tr>
             {% endfor %}
           </tbody>

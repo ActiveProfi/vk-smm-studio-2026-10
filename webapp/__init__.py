@@ -246,6 +246,12 @@ def create_app(test_config: dict | None = None) -> Flask:
     def vk_post_html_filter(text: str) -> str:
         return render_vk_post_html(text or "")
 
+    @app.template_filter("publish_format_label")
+    def publish_format_label_filter(value: str) -> str:
+        from webapp.services.publish_formats import label
+
+        return label(value)
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(smm_bp)
     app.register_blueprint(workspaces_bp)

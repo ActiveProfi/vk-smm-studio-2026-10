@@ -8,6 +8,7 @@ from typing import Any
 
 from webapp.models import ApiUsageLog, ContentPlanBatch, Draft, Rubric, Workspace, db
 from webapp.services import schedule_queue as sq
+from webapp.services.publish_formats import normalize_format as _plan_format
 
 PACKAGE_PRESETS = {
     "none": {"title": "Без пакета", "limit": 0},
@@ -36,6 +37,7 @@ def resolve_unit_cost(kind: str) -> float:
         "text": ("API_COST_TEXT_RUB", 3.0),
         "image": ("API_COST_IMAGE_RUB", 8.0),
         "video": ("API_COST_VIDEO_RUB", 25.0),
+        "animation": ("API_COST_ANIMATION_RUB", 45.0),
         "plan": ("API_COST_PLAN_RUB", 5.0),
         "marketer": ("API_COST_MARKETER_RUB", 5.0),
     }
@@ -49,6 +51,7 @@ DEFAULT_COSTS_RUB = {
     "text": resolve_unit_cost("text"),
     "image": resolve_unit_cost("image"),
     "video": resolve_unit_cost("video"),
+    "animation": resolve_unit_cost("animation"),
     "plan": resolve_unit_cost("plan"),
     "marketer": resolve_unit_cost("marketer"),
 }
@@ -57,6 +60,7 @@ KIND_LABELS_RU = {
     "text": "Текст поста",
     "image": "Картинка",
     "video": "Видео",
+    "animation": "Видео-анимация",
     "plan": "Контент-план (ИИ)",
     "marketer": "Резюме маркетолога",
 }
@@ -69,7 +73,7 @@ def usage_kind_title(kind: str | None) -> str:
 
 def cost_tariffs_for_ui() -> list[dict[str, Any]]:
     """Тарифы для подсказки в отчёте (оценка для агентства)."""
-    order = ("text", "image", "video", "plan", "marketer")
+    order = ("text", "image", "video", "animation", "plan", "marketer")
     return [
         {
             "kind": k,
@@ -180,6 +184,25 @@ def package_status(ws: Workspace) -> dict[str, Any]:
         "period_end": end.isoformat(),
         "period_label": f"{start.strftime('%d.%m.%Y')} — {end.strftime('%d.%m.%Y')}",
     }
+
+
+def package_allows_video(ws: Workspace) -> bool:
+    """Клип и видео-анимация — пакет Премиум, свой лимит или без пакета."""
+    code = (getattr(ws, "package_code", None) or "business").strip().lower()
+    return code in {"premium", "custom", "none"}
+
+
+def assert_can_use_video(ws: Workspace) -> None:
+    """Понятная ошибка, если на тарифе нет видео."""
+    if package_allows_video(ws):
+        assert_can_generate_post(ws)
+        return
+    title = package_title(getattr(ws, "package_code", None))
+    raise ValueError(
+        f"Клип и видео-анимация доступны на пакете «Премиум». "
+        f"Сейчас у канала пакет «{title}». "
+        f"Смените пакет в настройках канала — текст поста при этом сохранится."
+    )
 
 
 def assert_can_generate_post(ws: Workspace) -> None:
@@ -554,7 +577,7 @@ def create_plan_for_client(
                 "rubric_title": str(raw.get("rubric_title") or "").strip(),
                 "scheduled_for": str(raw.get("scheduled_for") or "").strip(),
                 "note": str(raw.get("note") or "").strip(),
-                "format": str(raw.get("format") or "").strip(),
+                "format": _plan_format(raw.get("format")),
             }
         )
     if not clean:
@@ -640,11 +663,14 @@ def create_planned_drafts_from_items(
         post_type = rubric.code if rubric else (code or "expert")
         scheduled = str(raw.get("scheduled_for") or "").strip()
         note = str(raw.get("note") or "").strip()
-        fmt = str(raw.get("format") or "").strip()
+        fmt = _plan_format(raw.get("format"))
         materials = ""
         if note or fmt:
             materials = f"Формат: {fmt}\nПодсказка плана: {note}".strip()
 
+        from webapp.services.publish_formats import apply_to_draft, media_flags
+
+        image_flag, video_flag = media_flags(fmt)
         draft = Draft(
             user_id=user_id,
             workspace_id=ws.id,
@@ -657,7 +683,11 @@ def create_planned_drafts_from_items(
             scheduled_for=scheduled,
             materials_text=materials[:5000],
             generation_warning="",
+            publish_format=fmt,
+            publish_with_image=image_flag,
+            publish_with_video=video_flag,
         )
+        apply_to_draft(draft, fmt)
         db.session.add(draft)
         db.session.flush()
         created_ids.append(draft.id)

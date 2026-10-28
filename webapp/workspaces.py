@@ -14,6 +14,9 @@ from webapp.services import vk_client
 from webapp.services import vk_ads_client
 from webapp.services import access as acc
 from webapp.services.http_guard import scrub_secrets
+from webapp.services.publish_formats import choices as pf_choices
+from webapp.services.publish_formats import label as pf_label
+from webapp.services.publish_formats import normalize_format as pf_code
 from webapp.services.secrets_box import reveal, seal
 from webapp.services import materials_bag
 from webapp.services import workspace_visual as ws_visual
@@ -28,6 +31,45 @@ from webapp.workspace_seed import (
     seed_rubrics_from_nds_templates,
 )
 workspaces_bp = Blueprint("workspaces", __name__, url_prefix="/workspaces")
+
+
+def _sample_plan_if_requested():
+    """Только для скриншота черновика плана, пока включён вход без пароля."""
+    from flask import current_app, request
+
+    if not current_app.config.get("DEV_SKIP_AUTH"):
+        return []
+    if (request.args.get("sample") or "") != "1":
+        return []
+    return [
+        {
+            "date": "2026-11-02",
+            "time": "10:00",
+            "topic": "Как выбрать зерно к утру",
+            "rubric_title": "Экспертный пост",
+            "rubric_code": "expert",
+            "format": "image",
+            "note": "коротко и по делу",
+        },
+        {
+            "date": "2026-11-03",
+            "time": "18:30",
+            "topic": "Пар над чашкой",
+            "rubric_title": "Кейс",
+            "rubric_code": "case",
+            "format": "animation",
+            "note": "короткий ролик",
+        },
+        {
+            "date": "2026-11-04",
+            "time": "12:00",
+            "topic": "Три напитка недели",
+            "rubric_title": "Чек-лист",
+            "rubric_code": "checklist",
+            "format": "carousel",
+            "note": "три кадра",
+        },
+    ]
 
 
 def _user_workspace(workspace_id: int) -> Workspace:
@@ -982,6 +1024,8 @@ def content_plan(workspace_id: int):
         require_client_approval=bool(ws.require_client_approval),
         package_status=biz.package_status(ws),
         saved_plans=saved_plans,
+        publish_formats=pf_choices(),
+        sample_plan=_sample_plan_if_requested(),
     )
 
 
@@ -1230,6 +1274,10 @@ def content_plan_view(workspace_id: int, plan_id: int):
     ws = _user_workspace(workspace_id)
     plan = ContentPlanBatch.query.filter_by(id=plan_id, workspace_id=ws.id).first_or_404()
     topics = biz.plan_items_from_json(plan.items_json)
+    for item in topics:
+        if isinstance(item, dict):
+            item["format"] = pf_code(item.get("format"))
+            item["format_label"] = pf_label(item.get("format"))
     return render_template(
         "workspaces/content_plan_view.html",
         workspace=ws,
@@ -1237,4 +1285,42 @@ def content_plan_view(workspace_id: int, plan_id: int):
         topics=topics,
         status_label=biz.client_status_label(plan.client_status),
         format_publish_at=sq.format_publish_at,
+        publish_formats=pf_choices(),
     )
+
+
+@workspaces_bp.route("/<int:workspace_id>/content-plan/<int:plan_id>/formats", methods=["POST"])
+@login_required
+def content_plan_update_formats(workspace_id: int, plan_id: int):
+    """Смена формата в уже сохранённом плане, пока он не в календаре."""
+    import json
+
+    from webapp.models import ContentPlanBatch, Draft
+    from webapp.services.publish_formats import apply_to_draft
+
+    ws = _user_workspace(workspace_id)
+    denied = acc.guard("content", ws)
+    if denied:
+        return denied
+    plan = ContentPlanBatch.query.filter_by(id=plan_id, workspace_id=ws.id).first_or_404()
+    if plan.saved_to_calendar:
+        flash("План уже в календаре. Формат каждого поста меняйте в карточке черновика.", "info")
+        return redirect(url_for("workspaces.content_plan_view", workspace_id=ws.id, plan_id=plan.id))
+    from webapp.services import business as biz
+
+    items = biz.plan_items_from_json(plan.items_json)
+    chosen = request.form.getlist("format")
+    for index, item in enumerate(items):
+        if isinstance(item, dict) and index < len(chosen):
+            item["format"] = pf_code(chosen[index])
+    plan.items_json = json.dumps(items, ensure_ascii=False)
+    for draft in Draft.query.filter_by(content_plan_id=plan.id, workspace_id=ws.id).all():
+        for item in items:
+            if isinstance(item, dict) and (item.get("topic") or "") == (draft.topic or ""):
+                kept = draft.post_text or ""
+                apply_to_draft(draft, item.get("format"))
+                draft.post_text = kept
+                break
+    db.session.commit()
+    flash("Форматы в плане обновлены. Тексты постов не менялись.", "success")
+    return redirect(url_for("workspaces.content_plan_view", workspace_id=ws.id, plan_id=plan.id))

@@ -118,6 +118,10 @@ def ensure_schema() -> None:
         alters.append("ALTER TABLE draft ADD COLUMN publish_with_image INTEGER DEFAULT 1")
     if _column_exists("draft", "id") and not _column_exists("draft", "publish_with_video"):
         alters.append("ALTER TABLE draft ADD COLUMN publish_with_video INTEGER DEFAULT 0")
+    if _column_exists("draft", "id") and not _column_exists("draft", "publish_format"):
+        alters.append("ALTER TABLE draft ADD COLUMN publish_format TEXT DEFAULT 'image'")
+    if _column_exists("draft", "id") and not _column_exists("draft", "carousel_urls_json"):
+        alters.append("ALTER TABLE draft ADD COLUMN carousel_urls_json TEXT DEFAULT '[]'")
     if _column_exists("draft", "id") and not _column_exists("draft", "client_status"):
         alters.append("ALTER TABLE draft ADD COLUMN client_status TEXT DEFAULT 'none'")
     if _column_exists("draft", "id") and not _column_exists("draft", "client_comment"):
@@ -152,6 +156,7 @@ def ensure_schema() -> None:
     if alters:
         db.session.commit()
     _migrate_seal_secrets()
+    _backfill_publish_formats()
     try:
         from webapp.services.security_ops import backfill_events
 
@@ -176,6 +181,30 @@ def _migrate_seal_secrets() -> None:
         val = (user.vk_token or "").strip()
         if val and not is_sealed(val):
             user.vk_token = seal(val)
+            changed = True
+    if changed:
+        db.session.commit()
+
+
+def _backfill_publish_formats() -> None:
+    """Старые черновики: если уже есть видео, формат не должен остаться «картинка»."""
+    if not _column_exists("draft", "publish_format"):
+        return
+    from webapp.models import Draft
+
+    changed = False
+    for draft in Draft.query.all():
+        current = (getattr(draft, "publish_format", None) or "").strip()
+        if not current:
+            draft.publish_format = "image"
+            current = "image"
+            changed = True
+        if (
+            current == "image"
+            and bool(getattr(draft, "publish_with_video", False))
+            and (draft.video_url or "").strip()
+        ):
+            draft.publish_format = "clip"
             changed = True
     if changed:
         db.session.commit()

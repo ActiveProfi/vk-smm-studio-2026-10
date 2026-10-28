@@ -154,15 +154,28 @@
   {% endif %}
   <div class="alert alert-light border d-none mb-3" id="plan-marketer-meta"></div>
   <p class="small text-muted" id="plan-result-meta"></p>
+  <div class="d-flex flex-wrap align-items-end gap-2 mb-3" id="plan-bulk-bar">
+    <div>
+      <label class="form-label small mb-1" for="plan-bulk-format">Формат для отмеченных тем</label>
+      <select class="form-select form-select-sm" id="plan-bulk-format">
+        {% for opt in publish_formats %}
+        <option value="{{ opt.code }}">{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="button" class="btn btn-outline-dark btn-sm" id="btn-bulk-format">Поставить выбранным</button>
+    <span class="small text-muted">Галочка слева — какие темы менять. Формат сохранится, когда отправите план или внесёте в календарь.</span>
+  </div>
   <div class="table-responsive">
     <table class="table align-middle mb-0" id="plan-table">
       <thead>
         <tr>
+          <th style="width:2.2rem"><input type="checkbox" id="plan-select-all" title="Все темы" aria-label="Все темы"></th>
           <th style="width:8.5rem">Дата</th>
           <th style="width:6.5rem">Время</th>
           <th style="width:8.5rem">Рубрика</th>
           <th>Тема</th>
-          <th style="width:7rem">Формат</th>
+          <th style="width:12rem">Формат</th>
           <th>Подсказка</th>
           <th style="width:3rem"></th>
         </tr>
@@ -191,6 +204,7 @@
   const approveUrl = {{ url_for('workspaces.content_plan_approve', workspace_id=workspace.id) | tojson }};
   const sendClientUrl = {{ url_for('workspaces.content_plan_send_client', workspace_id=workspace.id) | tojson }};
   const requireClientApproval = {{ require_client_approval | tojson }};
+  const FORMAT_OPTIONS = {{ publish_formats | tojson }};
 
   const postsInput = document.getElementById("posts-count");
   const startDateInput = document.getElementById("plan-start-date");
@@ -287,6 +301,7 @@
       tr.dataset.idx = String(idx);
       const timeVal = timeFromItem(item);
       tr.innerHTML =
+        '<td><input type="checkbox" class="plan-pick" aria-label="Выбрать тему"></td>' +
         '<td><input class="form-control form-control-sm plan-date" type="date" value="' +
         escapeAttr(item.date || "") +
         '"></td>' +
@@ -301,9 +316,7 @@
         '<td><input class="form-control form-control-sm plan-topic" value="' +
         escapeAttr(item.topic || "") +
         '"></td>' +
-        '<td><input class="form-control form-control-sm plan-format" value="' +
-        escapeAttr(item.format || "") +
-        '"></td>' +
+        '<td>' + formatSelectHtml(item.format) + '</td>' +
         '<td><input class="form-control form-control-sm plan-note" value="' +
         escapeAttr(item.note || "") +
         '"></td>' +
@@ -328,6 +341,27 @@
       .replace(/&/g, "&amp;")
       .replace(/"/g, "&quot;")
       .replace(/</g, "&lt;");
+  }
+
+  function normalizeFormat(raw) {
+    const s = String(raw || "").trim().toLowerCase().replaceAll("ё", "е");
+    if (FORMAT_OPTIONS.some((opt) => opt.code === s)) return s;
+    if (s.includes("анима") || s.includes("veo")) return "animation";
+    if (s.includes("карусел") || s.includes("carousel") || s.includes("слайд")) return "carousel";
+    if (s.includes("клип") || s.includes("рилс") || s.includes("clip")) return "clip";
+    if (s.includes("видео") || s === "video") return "clip";
+    if (s.includes("только текст") || s === "text" || s === "текст") return "text";
+    if (s.includes("текст") && !s.includes("картин") && !s.includes("фото")) return "text";
+    return "image";
+  }
+
+  function formatSelectHtml(selected) {
+    const code = normalizeFormat(selected);
+    const options = FORMAT_OPTIONS.map((opt) => {
+      const mark = opt.code === code ? " selected" : "";
+      return '<option value="' + escapeAttr(opt.code) + '"' + mark + ">" + escapeHtml(opt.label) + "</option>";
+    }).join("");
+    return '<select class="form-select form-select-sm plan-format" aria-label="Формат публикации">' + options + "</select>";
   }
 
   tbody.addEventListener("click", (e) => {
@@ -504,7 +538,31 @@
   btnRegen?.addEventListener("click", startGenerate);
   btnApprove?.addEventListener("click", approvePlan);
   btnSendClient?.addEventListener("click", sendPlanToClient);
+  document.getElementById("btn-bulk-format")?.addEventListener("click", () => {
+    const code = document.getElementById("plan-bulk-format")?.value || "image";
+    const rows = [...tbody.querySelectorAll("tr")].filter((tr) => tr.querySelector(".plan-pick")?.checked);
+    if (!rows.length) {
+      alert("Отметьте темы галочкой слева.");
+      return;
+    }
+    rows.forEach((tr) => {
+      const sel = tr.querySelector(".plan-format");
+      if (sel) sel.value = code;
+    });
+  });
+  document.getElementById("plan-select-all")?.addEventListener("change", (event) => {
+    tbody.querySelectorAll(".plan-pick").forEach((box) => {
+      box.checked = event.target.checked;
+    });
+  });
   syncDayCards();
+  const samplePlan = {{ sample_plan | tojson }};
+  if (Array.isArray(samplePlan) && samplePlan.length) {
+    renderTable(samplePlan, {
+      audience_summary: "Пример аудитории — так выглядит черновик до подтверждения.",
+      timing_logic: "Формат каждой темы меняется в списке, пока план не отправлен.",
+    });
+  }
 })();
 </script>
 {% endblock %}
